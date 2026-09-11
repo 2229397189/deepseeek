@@ -1,0 +1,40 @@
+name: lq-deepseek
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: lq-deepseek-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: lq_deepseek
+      POSTGRES_USER: lq
+      POSTGRES_PASSWORD: lq_deepseek_pwd
+      TZ: Asia/Shanghai
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lq -d lq_deepseek"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: lq-deepseek-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
+  redisdata:
