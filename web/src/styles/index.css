@@ -1,9 +1,7 @@
+/* 设计 token 变量由 main.tsx 先行引入（@import 在此处会被 vite 解析到错误基准路径） */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-/* 设计 token 变量（docs §3.3），在任何组件样式/内联 CSS 变量引用前引入 */
-@import './app/theme.css';
 
 /* 蓝图网格底纹：空态 / 顶栏背景（docs §3.4）
    16px 网格线，主色极低透明度，呼应「工程化、可解释、可观测」隐喻 */

@@ -1,4 +1,4 @@
-import { del, get, post } from '@/lib/apiClient';
+import { del, get, post, upload } from '@/lib/apiClient';
 import type {
   AnalyzeRequest,
   AskVO,

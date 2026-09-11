@@ -1,5 +1,5 @@
 import { get, post } from '@/lib/apiClient';
-import type { LedgerPage, RechargeRequest, RunPage, WalletVO } from './types';
+import type { LedgerPage, MetricsVO, RechargeRequest, RunPage, WalletVO } from './types';
 
 /** GET /billing/wallet */
 export function getWallet(): Promise<WalletVO> {

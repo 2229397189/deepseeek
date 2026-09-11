@@ -1,4 +1,4 @@
-import { del, get, post } from '@/lib/apiClient';
+import { get, post } from '@/lib/apiClient';
 import type { LoginRequest, LoginResponse, RegisterRequest, UserVO } from './types';
 
 /** POST /auth/register */

@@ -11,8 +11,9 @@ import { ToastProvider } from '@/shared/components/ToastProvider';
 export default function App(): JSX.Element {
   return (
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-      <ToastProvider />
+      <ToastProvider>
+        <RouterProvider router={router} />
+      </ToastProvider>
     </QueryClientProvider>
   );
 }

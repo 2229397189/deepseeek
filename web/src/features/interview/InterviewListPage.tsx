@@ -66,7 +66,8 @@ export function InterviewListPage(): JSX.Element {
         typeof row.score === 'number' ? (
           <span className="font-mono">{row.score}</span>
         ) : (
-          <span className="text-ink-faint">—</span>,
+          <span className="text-ink-faint">—</span>
+        ),
     },
     {
       key: 'status',

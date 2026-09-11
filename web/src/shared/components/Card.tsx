@@ -1,6 +1,6 @@
 import { type HTMLAttributes, type ReactNode } from 'react';
 
-export interface CardProps extends HTMLAttributes<HTMLDivElement> {
+export interface CardProps extends Omit<HTMLAttributes<HTMLDivElement>, 'title'> {
   /** 分区标题（可选，渲染为 text-md font-semibold） */
   title?: ReactNode;
   /** 标题右侧操作区 */
