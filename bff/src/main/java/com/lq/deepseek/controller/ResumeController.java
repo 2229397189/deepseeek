@@ -11,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -52,5 +53,12 @@ public class ResumeController {
     @PostMapping("/polish")
     public Result<ResumeDtos.PolishVO> polish(@Valid @RequestBody ResumeDtos.PolishRequest request) {
         return Result.ok(resumeService.polish(StpUtil.getLoginIdAsLong(), request));
+    }
+
+    @Operation(summary = "保存简历正文（Markdown）")
+    @PutMapping("/{assetId}")
+    public Result<ResumeDtos.SaveBodyResult> saveBody(@PathVariable Long assetId,
+                                                      @Valid @RequestBody ResumeDtos.SaveBodyRequest request) {
+        return Result.ok(resumeService.saveBody(StpUtil.getLoginIdAsLong(), assetId, request.getBody()));
     }
 }

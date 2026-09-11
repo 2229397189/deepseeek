@@ -199,6 +199,25 @@ public class ResumeServiceImpl implements ResumeService {
         return vo;
     }
 
+    @Override
+    public ResumeDtos.SaveBodyResult saveBody(Long userId, Long assetId, String body) {
+        FileAsset asset = requireOwned(userId, assetId);
+        // Store body in parseResult map under 'body' key
+        Map<String, Object> profile = asset.getParseResult();
+        if (profile == null) {
+            profile = new LinkedHashMap<>();
+        } else {
+            profile = new LinkedHashMap<>(profile);
+        }
+        profile.put("body", body);
+        fileAssetMapper.updateParseState(asset.getId(), asset.getParseStatus(), toJson(profile), null);
+
+        ResumeDtos.SaveBodyResult result = new ResumeDtos.SaveBodyResult();
+        result.setAssetId(asset.getId());
+        result.setMessage("正文已保存");
+        return result;
+    }
+
     // -----------------------------------------------------------------------
     // 内部实现
     // -----------------------------------------------------------------------
@@ -314,6 +333,11 @@ public class ResumeServiceImpl implements ResumeService {
         vo.setProfile(asset.getParseResult());
         vo.setCreatedAt(asset.getCreatedAt());
         vo.setDeduplicated(deduplicated);
+        // Extract Markdown body from parseResult if available
+        Map<String, Object> profile = asset.getParseResult();
+        if (profile != null && profile.get("body") instanceof String bodyStr) {
+            vo.setBody(bodyStr);
+        }
         return vo;
     }
 

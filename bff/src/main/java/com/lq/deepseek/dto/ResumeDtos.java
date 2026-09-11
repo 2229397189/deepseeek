@@ -27,6 +27,8 @@ public final class ResumeDtos {
         private String errorMsg;
         private Boolean deduplicated;
         private Map<String, Object> profile;
+        /** Markdown 正文。 */
+        private String body;
         private OffsetDateTime createdAt;
     }
 
@@ -74,5 +76,19 @@ public final class ResumeDtos {
         private Long costCredit;
         /** OWNER / REPLAY，命中回放说明未重复消耗额度 */
         private String flightMode;
+    }
+
+    /** 保存简历正文请求。 */
+    @Data
+    public static class SaveBodyRequest {
+        @NotBlank(message = "正文内容不能为空")
+        private String body;
+    }
+
+    /** 保存正文返回。 */
+    @Data
+    public static class SaveBodyResult {
+        private Long assetId;
+        private String message;
     }
 }

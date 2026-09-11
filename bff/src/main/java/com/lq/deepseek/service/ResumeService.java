@@ -28,4 +28,7 @@ public interface ResumeService {
 
     /** 选中文本润色 / 按岗位定制生成。 */
     ResumeDtos.PolishVO polish(Long userId, ResumeDtos.PolishRequest request);
+
+    /** 保存简历正文（Markdown）。 */
+    ResumeDtos.SaveBodyResult saveBody(Long userId, Long assetId, String body);
 }
