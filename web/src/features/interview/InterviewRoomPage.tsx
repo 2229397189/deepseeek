@@ -59,8 +59,9 @@ export function InterviewRoomPage(): JSX.Element {
   const send = () => {
     const content = input.trim();
     if (!content || answerMut.isPending) return;
-    setMessages((prev) => [...prev, { role: 'user', content }]);
     setInput('');
+    // 用户气泡由 answerMut.onSuccess 中的 turn.userMessage 统一追加，
+    // 这里不再乐观追加，避免每轮用户消息出现两条气泡。
     answerMut.mutate(content);
   };
 

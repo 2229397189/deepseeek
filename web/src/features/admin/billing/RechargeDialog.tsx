@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Dialog } from '@/shared/components/Dialog';
 import { Input } from '@/shared/components/Input';
@@ -18,9 +18,14 @@ interface RechargeDialogProps {
 export function RechargeDialog({ open, onClose }: RechargeDialogProps): JSX.Element {
   const [amount, setAmount] = useState('');
   const [remark, setRemark] = useState('');
-  const [idempotencyKey] = useState(genIdempotencyKey);
+  const [idempotencyKey, setIdempotencyKey] = useState(genIdempotencyKey);
   const pushToast = useUiStore((s) => s.pushToast);
   const qc = useQueryClient();
+
+  // 每次打开弹窗重新生成幂等键，避免常驻弹窗重复打开复用旧键导致 409 被拒。
+  useEffect(() => {
+    if (open) setIdempotencyKey(genIdempotencyKey());
+  }, [open]);
 
   const mutation = useMutation({
     mutationFn: () =>
