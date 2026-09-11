@@ -107,4 +107,25 @@ public final class GatewayDtos {
         private Long failure;
         private Long settleFailure;
     }
+
+    /**
+     * SSE 透传请求。业务侧只声明"调什么业务 / 业务主键 / 阶段 / 规格 / 负载"，
+     * 用户身份由 BFF 从 Sa-Token 注入，runId 由网关生成，调用方无需关心。
+     */
+    @Data
+    public static class AgentStreamRequest {
+
+        /** DECIDE / INTERVIEW / RESUME_PARSE / RAG_SEARCH / DECIDE_PREVIEW */
+        @NotBlank(message = "业务类型不能为空")
+        private String bizType;
+
+        private Long bizId;
+
+        private String stage;
+
+        /** 规格指纹：模型 / 提示词版本，参与去重键计算；不传表示使用默认规格 */
+        private String specHash;
+
+        private Map<String, Object> payload = new LinkedHashMap<>();
+    }
 }
