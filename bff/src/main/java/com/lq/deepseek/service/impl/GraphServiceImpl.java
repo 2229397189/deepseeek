@@ -168,7 +168,7 @@ public class GraphServiceImpl implements GraphService {
             addEdge(edges, edgeKeys, "candidate", iid, "参加");
             if (report != null) {
                 for (String weakPoint : nullSafe(report.getWeakPoints())) {
-                    String sid = registerSkill(weakPoint, true);
+                    String sid = registerSkill(skillWeak, weakPoint, true);
                     addEdge(edges, edgeKeys, iid, sid, "追问");
                 }
             }
@@ -189,10 +189,6 @@ public class GraphServiceImpl implements GraphService {
         skill = skill.trim();
         skillWeak.merge(skill, weak, (oldWeak, newWeak) -> oldWeak || newWeak);
         return "skill:" + skill;
-    }
-
-    private String registerSkill(String skill, boolean weak) {
-        return registerSkill(new LinkedHashMap<>(), skill, weak);
     }
 
     private void addEdge(List<GraphDtos.GraphEdge> edges, Set<String> keys, String source, String target, String relation) {
