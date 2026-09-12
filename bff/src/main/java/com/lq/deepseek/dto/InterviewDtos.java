@@ -54,6 +54,16 @@ public final class InterviewDtos {
         private String role;
         private String content;
         private OffsetDateTime createdAt;
+        /** 该题得分（仅 AI 出题消息或带回评估的用户作答消息携带） */
+        private Integer questionScore;
+        /** 命中关键词 */
+        private List<String> hitKeywords;
+        /** 缺失关键词 */
+        private List<String> missedKeywords;
+        /** 是否为追问 */
+        private Boolean isFollowUp;
+        /** 题号 */
+        private Integer questionIndex;
     }
 
     /** 会话详情（含消息历史 + 终态报告）。 */

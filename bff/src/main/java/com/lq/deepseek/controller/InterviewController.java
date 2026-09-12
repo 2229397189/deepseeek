@@ -59,6 +59,12 @@ public class InterviewController {
         return Result.ok(interviewService.finish(StpUtil.getLoginIdAsLong(), sessionId));
     }
 
+    @Operation(summary = "NEXT 阶段：依据出题计划推进到下一题")
+    @PostMapping("/sessions/{sessionId}/next")
+    public Result<InterviewDtos.MessageVO> next(@PathVariable Long sessionId) {
+        return Result.ok(interviewService.nextQuestion(StpUtil.getLoginIdAsLong(), sessionId));
+    }
+
     @Operation(summary = "读取面试报告")
     @GetMapping("/sessions/{sessionId}/report")
     public Result<InterviewDtos.InterviewReport> report(@PathVariable Long sessionId) {

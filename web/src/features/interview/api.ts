@@ -33,6 +33,11 @@ export function finishInterview(id: string): Promise<InterviewReport> {
   return post<InterviewReport>(`/api/interview/sessions/${id}/finish`, { id });
 }
 
+/** POST /interview/sessions/{id}/next —— NEXT 阶段：依据出题计划主动推进到下一题 */
+export function nextInterviewQuestion(id: string): Promise<MessageVO> {
+  return post<MessageVO>(`/api/interview/sessions/${id}/next`, {});
+}
+
 /** GET /interview/sessions/{id}/report */
 export function getInterviewReport(id: string): Promise<InterviewReport> {
   return get<InterviewReport>(`/api/interview/sessions/${id}/report`);

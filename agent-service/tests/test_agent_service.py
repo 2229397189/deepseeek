@@ -158,6 +158,9 @@ def test_interview_flow_follows_up_on_weak_answer(client: TestClient):
     assert answer["hasFollowUp"] is True
     assert answer["followUp"]
     assert answer["weakPointsUpdate"]
+    # P0-6: ANSWER 必须直接返回下一题，BFF 才能在同一往返里推进出题计划
+    assert answer["question"]
+    assert "isFinished" in answer
 
     finish = _invoke(client, "INTERVIEW", {
         "mode": "FINISH", "jobTitle": "后端工程师",
@@ -186,6 +189,39 @@ def test_interview_good_answer_skips_follow_up(client: TestClient):
     assert output["score"] >= 70
     assert output["isWeak"] is False
     assert output["hasFollowUp"] is False
+
+
+def test_interview_next_advances_through_plan_and_closes(client: TestClient):
+    """NEXT 阶段：依据 questionPlan 推进到下一个未问技能，计划走完进入收尾反问。"""
+    start = _invoke(client, "INTERVIEW", {
+        "mode": "START", "resumeText": RESUME_TEXT, "jdText": JD_TEXT,
+        "weakPoints": [], "jobTitle": "后端工程师",
+    })["output"]
+    plan = start["questionPlan"]
+    assert plan
+
+    # 已问过首题，history 里带 skill；NEXT 应挑下一个未问技能
+    asked = [{"question": start["question"], "answer": "答了", "score": 80, "skill": start["skill"]}]
+    nxt = _invoke(client, "INTERVIEW", {
+        "mode": "NEXT", "jobTitle": "后端工程师",
+        "questionPlan": plan, "history": asked, "weakPoints": [],
+    })["output"]
+    assert nxt["mode"] == "NEXT"
+    assert nxt["question"]
+    # 下一题的技能必须是计划里、且不等于已问的首题技能
+    assert nxt["skill"] != start["skill"]
+    assert any(entry["skill"] == nxt["skill"] for entry in plan)
+    assert nxt["isFinished"] is False
+
+    # 把所有计划技能都标记为已问，NEXT 应进入收尾反问
+    all_asked = asked + [{"question": f"q-{e['skill']}", "answer": "答了", "score": 80,
+                          "skill": e["skill"]} for e in plan if e["skill"] != start["skill"]]
+    closing = _invoke(client, "INTERVIEW", {
+        "mode": "NEXT", "jobTitle": "后端工程师",
+        "questionPlan": plan, "history": all_asked, "weakPoints": [],
+    })["output"]
+    assert closing["isFinished"] is True
+    assert "补充" in closing["question"] or "反问" in closing["question"]
 
 
 # ---------------------------------------------------------------------------

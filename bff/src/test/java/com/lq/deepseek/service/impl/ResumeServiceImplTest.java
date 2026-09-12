@@ -5,7 +5,9 @@ import com.lq.deepseek.common.BusinessException;
 import com.lq.deepseek.common.ErrorCode;
 import com.lq.deepseek.config.props.LqProperties;
 import com.lq.deepseek.domain.entity.FileAsset;
+import com.lq.deepseek.domain.entity.ResumeVersion;
 import com.lq.deepseek.domain.mapper.FileAssetMapper;
+import com.lq.deepseek.domain.mapper.ResumeVersionMapper;
 import com.lq.deepseek.dto.ResumeDtos;
 import com.lq.deepseek.gateway.AiInvocationGateway;
 import com.lq.deepseek.gateway.model.AgentInvokeCommand;
@@ -48,16 +50,19 @@ class ResumeServiceImplTest {
     Path tempDir;
 
     private FileAssetMapper fileAssetMapper;
+    private ResumeVersionMapper resumeVersionMapper;
     private AiInvocationGateway gateway;
     private ResumeServiceImpl service;
 
     @BeforeEach
     void setUp() {
         fileAssetMapper = mock(FileAssetMapper.class);
+        resumeVersionMapper = mock(ResumeVersionMapper.class);
         gateway = mock(AiInvocationGateway.class);
         LqProperties properties = new LqProperties();
         properties.getStorage().setLocalRoot(tempDir.toString());
-        service = new ResumeServiceImpl(fileAssetMapper, gateway, properties, new ObjectMapper());
+        when(resumeVersionMapper.insert(any(ResumeVersion.class))).thenReturn(1);
+        service = new ResumeServiceImpl(fileAssetMapper, resumeVersionMapper, gateway, properties, new ObjectMapper());
     }
 
     @Test

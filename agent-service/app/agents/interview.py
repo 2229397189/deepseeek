@@ -52,6 +52,10 @@ QUESTION_BANK: dict[str, str] = {
 GENERIC_QUESTION = ("请挑一个你最有成就感的项目，说明背景、你的独立贡献、遇到的最大技术挑战"
                     "以及最终的可量化结果。")
 
+# 出题计划走完（或达到最大题数）后的收尾语，提示候选人可补充或反问
+CLOSING_QUESTION = ("看来我们已经把你的技术栈聊得比较充分了，你还有什么想补充、"
+                    "或者想反问我的吗？")
+
 DIMENSION_HINT = {
     "技术深度": ("索引", "gc", "锁", "源码", "原理", "参数", "并发", "调优"),
     "表达结构": ("背景", "职责", "方案", "结果", "因为", "所以", "首先", "其次"),
@@ -67,9 +71,11 @@ async def handle(ctx: AgentContext) -> AgentOutcome:
         return await _start(ctx)
     if mode == "ANSWER":
         return await _answer(ctx)
+    if mode == "NEXT":
+        return await _next(ctx)
     if mode == "FINISH":
         return await _finish(ctx)
-    raise PayloadInvalid(f"不支持的面试模式：{mode}（可选 START / ANSWER / FINISH）")
+    raise PayloadInvalid(f"不支持的面试模式：{mode}（可选 START / ANSWER / NEXT / FINISH）")
 
 
 def _infer_mode(ctx: AgentContext) -> str:
@@ -201,6 +207,9 @@ async def _answer(ctx: AgentContext) -> AgentOutcome:
         model = generated.model
         await recorder.done("ask_follow_up", "已生成追问", started)
 
+    next_question, next_skill, is_finished, asked_count = _derive_next_question(
+        payload, history, follow_up, skill)
+
     output = {
         "mode": "ANSWER",
         "score": score,
@@ -210,7 +219,11 @@ async def _answer(ctx: AgentContext) -> AgentOutcome:
         "hasFollowUp": follow_up is not None,
         "followUp": follow_up,
         "followUpCount": follow_up_count + (1 if follow_up else 0),
-        "nextSkill": skill if follow_up else _next_skill(payload, history),
+        "question": next_question,
+        "nextSkill": next_skill,
+        "isFinished": is_finished,
+        "questionIndex": asked_count + 1,
+        "maxQuestions": MAX_QUESTIONS,
         "weakPointsUpdate": updated_weak,
         "historyLength": len(history),
         "steps": [step.model_dump() for step in recorder.steps],
@@ -296,6 +309,96 @@ def _next_skill(payload: dict, history: list) -> str | None:
         if skill and skill not in asked:
             return skill
     return None
+
+
+def _asked_count(history: list) -> int:
+    """已出题目的数量：history 中每个含 question 字段的逐题问答对算一道。"""
+    return len([h for h in history if isinstance(h, dict) and h.get("question")])
+
+
+def _derive_next_question(payload: dict, history: list, follow_up: str | None,
+                          current_skill) -> tuple[str, str | None, bool, int]:
+    """计算本轮作答后应当抛给候选人的下一题。
+
+    返回 ``(question, skill, is_finished, asked_count)``：
+
+    - 若需要追问，则下一题就是追问本身；
+    - 否则从出题计划里挑下一个未问过的技能；
+    - 计划用完或已达上限（``MAX_QUESTIONS``），则进入收尾反问。
+    """
+    asked_count = _asked_count(history)
+    if follow_up:
+        return follow_up, current_skill, False, asked_count
+    next_skill = _next_skill(payload, history)
+    if next_skill is None or asked_count >= MAX_QUESTIONS:
+        return CLOSING_QUESTION, next_skill, True, asked_count
+    return _question_for(next_skill, ""), next_skill, False, asked_count
+
+
+async def _next(ctx: AgentContext) -> AgentOutcome:
+    """NEXT 阶段：在出题计划内推进到下一题，或进入收尾反问。
+
+    与 ``_answer`` 不同，本阶段不提交作答、不评分，仅用于用户主动「下一题 /
+    跳过」或计划推进。BFF 需把 ``questionPlan`` 与历史 ``history`` 透传进来。
+    """
+    payload = ctx.payload
+    history = payload.get("history") or []
+    question_plan = payload.get("questionPlan") or []
+    question, next_skill, is_finished, asked_count = _derive_next_question(
+        payload, history, None, payload.get("skill"))
+
+    recorder = StepRecorder(ctx.emit)
+    if is_finished:
+        output = {
+            "mode": "NEXT",
+            "question": question,
+            "skill": next_skill,
+            "reason": "",
+            "questionIndex": asked_count + 1,
+            "maxQuestions": MAX_QUESTIONS,
+            "isFinished": True,
+            "steps": [step.model_dump() for step in recorder.steps],
+        }
+        return AgentOutcome(output=output, steps=recorder.steps, usage=Usage(),
+                            model="closing-scripted", prompt_version=PROMPT_VERSION, mock=True)
+
+    started = await recorder.start("ask_question")
+    reason = ""
+    for entry in question_plan:
+        if isinstance(entry, dict) and entry.get("skill") == next_skill:
+            reason = entry.get("reason") or ""
+            break
+
+    if next_skill in QUESTION_BANK:
+        usage = Usage()
+        model = "question-bank"
+    else:
+        messages = [
+            LlmMessage(role="system", content=INTERVIEW_QUESTION_PROMPT.format(system=SYSTEM_BASE)),
+            LlmMessage(role="user", content=(
+                f"{task_marker('INTERVIEW_QUESTION')}\n"
+                f"岗位：{payload.get('jobTitle') or '目标岗位'}\n"
+                f"本题考察方向：{next_skill}\n考察原因：{reason}"
+            )),
+        ]
+        generated = await ctx.llm.chat(messages)
+        question = _question_for(next_skill, generated.text)
+        usage = Usage(prompt_tokens=generated.prompt_tokens, output_tokens=generated.output_tokens)
+        model = generated.model
+    await recorder.done("ask_question", f"下一题考察 {next_skill}", started)
+
+    output = {
+        "mode": "NEXT",
+        "question": question,
+        "skill": next_skill,
+        "reason": reason,
+        "questionIndex": asked_count + 1,
+        "maxQuestions": MAX_QUESTIONS,
+        "isFinished": False,
+        "steps": [step.model_dump() for step in recorder.steps],
+    }
+    return AgentOutcome(output=output, steps=recorder.steps, usage=usage, model=model,
+                        prompt_version=PROMPT_VERSION, mock=model == "deterministic-mock")
 
 
 __all__ = ["handle"]

@@ -24,6 +24,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -36,11 +37,15 @@ import java.util.Objects;
  *
  * <p>三件硬约束驱动写法：
  * <ol>
- *   <li><b>出题须经网关</b>：所有 AI 交互（首题 / 追问 / 终评）统一走 {@code AiInvocationGateway}
+ *   <li><b>出题须经网关</b>：所有 AI 交互（首题 / 追问 / 终评 / 下一题）统一走 {@code AiInvocationGateway}
  *       的 INTERVIEW 业务类型，不绕过治理层（去重 / 重试 / 计量 / 审计）；</li>
  *   <li><b>失败不卡死</b>：网关不可用时回退确定性题目，让面试能继续推进，而不是整场开不出来；</li>
  *   <li><b>分数可追溯</b>：终态报告落 {@code interview_reports}，界面上的分数永远能追到具体调用。</li>
  * </ol>
+ *
+ * <p>出题引擎（P0-6）以 agent 的 {@code questionPlan} 为权威：{@code start} 把计划与当前进度写入
+ * {@code stateSnapshot}，{@code answer}/{@code next} 据此推进到下一题，{@code finish} 用逐题问答对聚合评分。
+ * BFF 与 agent 的契约是 <b>mode 字段</b>（START / ANSWER / NEXT / FINISH），而非旧的 stage 字段。
  */
 @Slf4j
 @Service
@@ -97,22 +102,50 @@ public class InterviewServiceImpl implements InterviewService {
         sessionMapper.insert(session);
 
         Map<String, Object> profile = loadResumeProfile(userId, request.getResumeAssetId());
+        String resumeText = profile.isEmpty() ? "" : writeJson(profile);
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("stage", "OPEN");
+        payload.put("mode", "START");
         payload.put("jobTitle", jobTitle);
-        payload.put("model", request.getModel());
-        payload.put("resumeProfile", profile);
-        payload.put("history", List.of());
+        payload.put("resumeText", resumeText);
+        payload.put("weakPoints", List.of());
 
-        AgentInvokeResult result = callGateway(userId, session.getId(), "OPEN", payload, OPEN_FREEZE_CREDIT);
-        String opening = result != null && result.succeeded()
-                ? strOf(result.getOutput().get("question"), FALLBACK_OPENING)
-                : FALLBACK_OPENING;
-        if (result == null || !result.succeeded()) {
+        AgentInvokeResult result = callGateway(userId, session.getId(), "START", payload, OPEN_FREEZE_CREDIT);
+        Map<String, Object> output = result != null && result.succeeded() ? result.getOutput() : null;
+
+        String opening;
+        List<Map<String, Object>> plan;
+        String firstSkill;
+        int questionIndex;
+        List<String> weakPoints;
+        if (output != null && output.get("question") != null) {
+            opening = strOf(output.get("question"), FALLBACK_OPENING);
+            plan = snapPlans(output.get("questionPlan"));
+            firstSkill = strOf(output.get("skill"), null);
+            questionIndex = intOf(output.get("questionIndex"), 1);
+            weakPoints = strListOf(output.get("weakPointsTracking"));
+        } else {
             log.warn("面试首题生成降级为本地题目 userId={} sessionId={}", userId, session.getId());
+            opening = FALLBACK_OPENING;
+            plan = List.of();
+            firstSkill = null;
+            questionIndex = 1;
+            weakPoints = List.of();
         }
 
-        appendTurn(session.getId(), 1, ROLE_INTERVIEWER, opening, null);
+        Map<String, Object> openingEval = new LinkedHashMap<>();
+        openingEval.put("questionIndex", questionIndex);
+        openingEval.put("isFollowUp", false);
+        appendTurn(session.getId(), 1, ROLE_INTERVIEWER, opening, null, firstSkill, openingEval);
+
+        Map<String, Object> snapshot = new LinkedHashMap<>();
+        snapshot.put("questionPlan", plan);
+        snapshot.put("currentSkill", firstSkill);
+        snapshot.put("questionIndex", questionIndex);
+        snapshot.put("weakPoints", weakPoints);
+        snapshot.put("followUpCount", 0);
+        session.setStateSnapshot(snapshot);
+        sessionMapper.updateById(session);
+
         return toSessionVO(session, opening);
     }
 
@@ -150,7 +183,7 @@ public class InterviewServiceImpl implements InterviewService {
     }
 
     // ------------------------------------------------------------------
-    // 作答 / 结束
+    // 作答 / 下一题 / 结束
     // ------------------------------------------------------------------
 
     @Override
@@ -159,40 +192,175 @@ public class InterviewServiceImpl implements InterviewService {
         if (STATUS_FINISHED.equals(session.getStatus())) {
             throw new BusinessException(ErrorCode.CONFLICT, "面试已结束，无法继续作答");
         }
+        Map<String, Object> snap = session.getStateSnapshot() != null ? session.getStateSnapshot() : Map.of();
+        String currentSkill = strOf(snap.get("currentSkill"), null);
+        int questionIndex = intOf(snap.get("questionIndex"), 1);
+        List<String> weakPoints = strListOf(snap.get("weakPoints"));
+        int followUpCount = intOf(snap.get("followUpCount"), 0);
+        List<Map<String, Object>> plan = snapPlans(snap.get("questionPlan"));
 
         int maxSeq = turnMapper.selectMaxSeq(sessionId);
-        appendTurn(sessionId, maxSeq + 1, ROLE_CANDIDATE, request.getContent(), null);
+        InterviewTurn currentQuestion = latestInterviewerTurn(sessionId);
+        if (currentQuestion == null) {
+            Map<String, Object> fbEval = new LinkedHashMap<>();
+            fbEval.put("questionIndex", 1);
+            fbEval.put("isFollowUp", false);
+            currentQuestion = appendTurn(session.getId(), maxSeq + 1, ROLE_INTERVIEWER,
+                    FALLBACK_OPENING, null, null, fbEval);
+            maxSeq = maxSeq + 1;
+        }
+        String askedQuestion = currentQuestion.getContent();
+        String askedSkill = currentQuestion.getSkill() != null ? currentQuestion.getSkill() : currentSkill;
+
+        InterviewTurn candidateTurn = appendTurn(session.getId(), maxSeq + 1, ROLE_CANDIDATE,
+                request.getContent(), null, null, null);
 
         List<Map<String, Object>> history = buildHistory(sessionId);
-        Map<String, Object> profile = loadResumeProfile(userId, session.getResumeAssetId());
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("stage", "ANSWER");
+        payload.put("mode", "ANSWER");
         payload.put("jobTitle", session.getTitle());
-        payload.put("resumeProfile", profile);
-        payload.put("history", history);
         payload.put("answer", request.getContent());
+        payload.put("question", askedQuestion);
+        payload.put("skill", askedSkill);
+        payload.put("weakPoints", weakPoints);
+        payload.put("history", history);
+        payload.put("followUpCount", followUpCount);
+        payload.put("questionPlan", plan);
 
         AgentInvokeResult result = callGateway(userId, sessionId, "ANSWER", payload, ANSWER_FREEZE_CREDIT);
+        Map<String, Object> out = result != null && result.succeeded() ? result.getOutput() : null;
+
         String nextQuestion;
-        Integer turnScore = null;
-        if (result != null && result.succeeded()) {
-            nextQuestion = strOf(result.getOutput().get("question"), fallbackQuestion(maxSeq + 2));
-            turnScore = intOf(result.getOutput().get("score"));
+        Integer turnScore;
+        String nextSkill;
+        boolean isFinished;
+        List<String> hitKeywords;
+        List<String> missedKeywords;
+        boolean hasFollowUp;
+        List<String> weakUpdate;
+        if (out != null) {
+            nextQuestion = strOf(out.get("question"), fallbackQuestion(questionIndex + 1));
+            turnScore = intOf(out.get("score"));
+            nextSkill = strOf(out.get("nextSkill"), null);
+            isFinished = Boolean.TRUE.equals(out.get("isFinished"));
+            hitKeywords = strListOf(out.get("matchedKeywords"));
+            missedKeywords = strListOf(out.get("missingKeywords"));
+            hasFollowUp = Boolean.TRUE.equals(out.get("hasFollowUp"));
+            weakUpdate = strListOf(out.get("weakPointsUpdate"));
         } else {
             log.warn("面试追问降级为本地题目 userId={} sessionId={}", userId, sessionId);
-            nextQuestion = fallbackQuestion(maxSeq + 2);
+            nextQuestion = fallbackQuestion(questionIndex + 1);
+            turnScore = 70;
+            nextSkill = null;
+            isFinished = false;
+            hitKeywords = List.of();
+            missedKeywords = List.of();
+            hasFollowUp = false;
+            weakUpdate = weakPoints;
         }
 
-        InterviewTurn aiTurn = appendTurn(sessionId, maxSeq + 2, ROLE_INTERVIEWER, nextQuestion, turnScore);
+        // 把评分与命中情况回填到当前题目（用于 buildHistory 透传 skill 与终评聚合）
+        Map<String, Object> evalMeta = new LinkedHashMap<>();
+        evalMeta.put("questionIndex", questionIndex);
+        evalMeta.put("isFollowUp", false);
+        evalMeta.put("matchedKeywords", hitKeywords);
+        evalMeta.put("missingKeywords", missedKeywords);
+        evalMeta.put("hasFollowUp", hasFollowUp);
+        currentQuestion.setScore(turnScore == null ? null : BigDecimal.valueOf(turnScore));
+        currentQuestion.setEvalMeta(evalMeta);
+        turnMapper.updateById(currentQuestion);
 
+        Map<String, Object> nextEval = new LinkedHashMap<>();
+        nextEval.put("questionIndex", isFinished ? questionIndex : questionIndex + 1);
+        nextEval.put("isFollowUp", hasFollowUp);
+        appendTurn(session.getId(), maxSeq + 2, ROLE_INTERVIEWER, nextQuestion, null, nextSkill, nextEval);
+
+        // 推进出题进度快照
+        Map<String, Object> newSnap = new LinkedHashMap<>(snap);
+        if (hasFollowUp) {
+            newSnap.put("followUpCount", followUpCount + 1);
+        } else {
+            newSnap.put("followUpCount", 0);
+            newSnap.put("questionIndex", questionIndex + 1);
+            newSnap.put("currentSkill", nextSkill);
+        }
+        newSnap.put("weakPoints", weakUpdate);
+        session.setStateSnapshot(newSnap);
         session.setTurnCount((session.getTurnCount() == null ? 0 : session.getTurnCount()) + 1);
         sessionMapper.updateById(session);
 
+        InterviewDtos.MessageVO userVo = toMessageVO(candidateTurn);
+        userVo.setQuestionScore(turnScore);
+        userVo.setHitKeywords(hitKeywords);
+        userVo.setMissedKeywords(missedKeywords);
+        userVo.setIsFollowUp(hasFollowUp);
+        userVo.setQuestionIndex(questionIndex);
+
         InterviewDtos.InterviewTurn vo = new InterviewDtos.InterviewTurn();
-        vo.setUserMessage(toMessageVO(candidateTurn(sessionId, maxSeq + 1, request.getContent())));
-        vo.setAiMessage(toMessageVO(aiTurn));
+        vo.setUserMessage(userVo);
+        vo.setAiMessage(toMessageVO(latestInterviewerTurn(sessionId)));
         vo.setTranscript(null);
         return vo;
+    }
+
+    @Override
+    public InterviewDtos.MessageVO nextQuestion(Long userId, Long sessionId) {
+        InterviewSession session = requireOwned(userId, sessionId);
+        if (STATUS_FINISHED.equals(session.getStatus())) {
+            throw new BusinessException(ErrorCode.CONFLICT, "面试已结束，无法继续作答");
+        }
+        Map<String, Object> snap = session.getStateSnapshot() != null ? session.getStateSnapshot() : Map.of();
+        int questionIndex = intOf(snap.get("questionIndex"), 1);
+        String currentSkill = strOf(snap.get("currentSkill"), null);
+        List<String> weakPoints = strListOf(snap.get("weakPoints"));
+        List<Map<String, Object>> plan = snapPlans(snap.get("questionPlan"));
+
+        List<Map<String, Object>> history = buildHistory(sessionId);
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("mode", "NEXT");
+        payload.put("jobTitle", session.getTitle());
+        payload.put("questionPlan", plan);
+        payload.put("history", history);
+        payload.put("weakPoints", weakPoints);
+        payload.put("skill", currentSkill);
+
+        AgentInvokeResult result = callGateway(userId, sessionId, "NEXT", payload, ANSWER_FREEZE_CREDIT);
+        Map<String, Object> out = result != null && result.succeeded() ? result.getOutput() : null;
+
+        String nextQuestion;
+        String nextSkill;
+        boolean isFinished;
+        int nextIndex;
+        if (out != null) {
+            nextQuestion = strOf(out.get("question"), fallbackQuestion(questionIndex + 1));
+            nextSkill = strOf(out.get("skill"), null);
+            isFinished = Boolean.TRUE.equals(out.get("isFinished"));
+            nextIndex = intOf(out.get("questionIndex"), questionIndex + 1);
+        } else {
+            log.warn("面试下一题降级为本地题目 userId={} sessionId={}", userId, sessionId);
+            nextQuestion = fallbackQuestion(questionIndex + 1);
+            nextSkill = null;
+            isFinished = false;
+            nextIndex = questionIndex + 1;
+        }
+
+        int maxSeq = turnMapper.selectMaxSeq(sessionId);
+        Map<String, Object> nextEval = new LinkedHashMap<>();
+        nextEval.put("questionIndex", nextIndex);
+        nextEval.put("isFollowUp", false);
+        InterviewTurn aiTurn = appendTurn(session.getId(), maxSeq + 1, ROLE_INTERVIEWER,
+                nextQuestion, null, nextSkill, nextEval);
+
+        Map<String, Object> newSnap = new LinkedHashMap<>(snap);
+        newSnap.put("currentSkill", nextSkill);
+        newSnap.put("questionIndex", nextIndex);
+        if (isFinished) {
+            newSnap.put("currentSkill", nextSkill);
+        }
+        session.setStateSnapshot(newSnap);
+        sessionMapper.updateById(session);
+
+        return toMessageVO(aiTurn);
     }
 
     @Override
@@ -203,30 +371,32 @@ public class InterviewServiceImpl implements InterviewService {
             return toReportVO(existing);
         }
 
+        Map<String, Object> snap = session.getStateSnapshot() != null ? session.getStateSnapshot() : Map.of();
+        List<String> weakPoints = strListOf(snap.get("weakPoints"));
         List<Map<String, Object>> history = buildHistory(sessionId);
-        Map<String, Object> profile = loadResumeProfile(userId, session.getResumeAssetId());
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("stage", "FINISH");
+        payload.put("mode", "FINISH");
         payload.put("jobTitle", session.getTitle());
-        payload.put("resumeProfile", profile);
+        payload.put("weakPoints", weakPoints);
         payload.put("history", history);
 
         AgentInvokeResult result = callGateway(userId, sessionId, "FINISH", payload, FINISH_FREEZE_CREDIT);
+        Map<String, Object> out = result != null && result.succeeded() ? result.getOutput() : null;
 
         Integer score;
         Map<String, Object> dimensions;
-        List<String> weakPoints;
+        List<String> weakUpdate;
         String suggestion;
-        if (result != null && result.succeeded()) {
-            score = intOf(result.getOutput().get("score"));
-            dimensions = mapOf(result.getOutput().get("dimensions"));
-            weakPoints = strListOf(result.getOutput().get("weakPoints"));
-            suggestion = strOf(result.getOutput().get("suggestion"), null);
+        if (out != null) {
+            score = intOf(out.get("totalScore"));
+            dimensions = mapOf(out.get("dimensions"));
+            weakUpdate = strListOf(out.get("weakPointsUpdate"));
+            suggestion = strOf(out.get("report"), null);
         } else {
             log.warn("面试终评降级为本地报告 userId={} sessionId={}", userId, sessionId);
             score = 60;
             dimensions = Map.of("communication", 60, "skill", 60);
-            weakPoints = List.of();
+            weakUpdate = List.of();
             suggestion = "本次面试已完成，评分服务暂不可用，建议稍后在「面试记录」中查看完整评估。";
         }
 
@@ -235,20 +405,20 @@ public class InterviewServiceImpl implements InterviewService {
         report.setSessionId(sessionId);
         report.setScore(score);
         report.setDimensions(dimensions);
-        report.setWeakPoints(weakPoints);
+        report.setWeakPoints(weakUpdate);
         report.setSuggestion(suggestion);
         reportMapper.insert(report);
 
         // P0-7: 薄弱点回写用户画像 —— 每个薄弱点插入 PENDING 长期记忆
-        if (weakPoints != null && !weakPoints.isEmpty()) {
-            for (String wp : weakPoints) {
+        if (weakUpdate != null && !weakUpdate.isEmpty()) {
+            for (String wp : weakUpdate) {
                 LongTermMemory memory = new LongTermMemory();
                 memory.setUserId(userId);
                 memory.setContent("面试薄弱点: " + wp);
                 memory.setStatus("PENDING");
                 longTermMemoryMapper.insert(memory);
             }
-            log.info("面试薄弱点已回写画像 userId={} sessionId={} count={}", userId, sessionId, weakPoints.size());
+            log.info("面试薄弱点已回写画像 userId={} sessionId={} count={}", userId, sessionId, weakUpdate.size());
         }
 
         session.setStatus(STATUS_FINISHED);
@@ -287,24 +457,27 @@ public class InterviewServiceImpl implements InterviewService {
     // 内部实现
     // ------------------------------------------------------------------
 
-    private InterviewTurn appendTurn(Long sessionId, int seq, String role, String content, Integer score) {
+    private InterviewTurn appendTurn(Long sessionId, int seq, String role, String content,
+                                     Integer score, String skill, Map<String, Object> evalMeta) {
         InterviewTurn turn = new InterviewTurn();
         turn.setSessionId(sessionId);
         turn.setSeq(seq);
         turn.setRole(role);
         turn.setContent(content);
-        turn.setScore(score == null ? null : java.math.BigDecimal.valueOf(score));
+        turn.setStage(ROLE_INTERVIEWER.equals(role) ? "QUESTION" : "ANSWER");
+        turn.setScore(score == null ? null : BigDecimal.valueOf(score));
+        turn.setSkill(skill);
+        turn.setEvalMeta(evalMeta);
         turnMapper.insert(turn);
         return turn;
     }
 
-    private InterviewTurn candidateTurn(Long sessionId, int seq, String content) {
-        InterviewTurn turn = new InterviewTurn();
-        turn.setSessionId(sessionId);
-        turn.setSeq(seq);
-        turn.setRole(ROLE_CANDIDATE);
-        turn.setContent(content);
-        return turn;
+    private InterviewTurn latestInterviewerTurn(Long sessionId) {
+        return turnMapper.selectOne(new LambdaQueryWrapper<InterviewTurn>()
+                .eq(InterviewTurn::getSessionId, sessionId)
+                .eq(InterviewTurn::getRole, ROLE_INTERVIEWER)
+                .orderByDesc(InterviewTurn::getSeq)
+                .last("LIMIT 1"));
     }
 
     private List<Map<String, Object>> buildHistory(Long sessionId) {
@@ -313,10 +486,18 @@ public class InterviewServiceImpl implements InterviewService {
                 .orderByAsc(InterviewTurn::getSeq)
                 .last("LIMIT 500"));
         List<Map<String, Object>> history = new ArrayList<>(turns.size());
-        for (InterviewTurn turn : turns) {
+        for (int i = 0; i < turns.size(); i++) {
+            InterviewTurn t = turns.get(i);
+            if (!ROLE_INTERVIEWER.equals(t.getRole()) || t.getScore() == null) {
+                continue;
+            }
+            InterviewTurn candidate = (i + 1 < turns.size()
+                    && ROLE_CANDIDATE.equals(turns.get(i + 1).getRole())) ? turns.get(i + 1) : null;
             Map<String, Object> item = new LinkedHashMap<>();
-            item.put("role", turn.getRole());
-            item.put("content", turn.getContent());
+            item.put("question", t.getContent());
+            item.put("answer", candidate != null ? candidate.getContent() : "");
+            item.put("score", t.getScore().intValue());
+            item.put("skill", t.getSkill());
             history.add(item);
         }
         return history;
@@ -332,6 +513,14 @@ public class InterviewServiceImpl implements InterviewService {
             return Map.of();
         }
         return asset.getParseResult();
+    }
+
+    private String writeJson(Map<String, Object> value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (Exception e) {
+            return "";
+        }
     }
 
     private InterviewSession requireOwned(Long userId, Long sessionId) {
@@ -397,6 +586,24 @@ public class InterviewServiceImpl implements InterviewService {
         vo.setRole(turn.getRole());
         vo.setContent(turn.getContent());
         vo.setCreatedAt(turn.getCreatedAt());
+        if (turn.getScore() != null) {
+            vo.setQuestionScore(turn.getScore().intValue());
+        }
+        Map<String, Object> meta = turn.getEvalMeta();
+        if (meta != null) {
+            if (meta.get("questionIndex") != null) {
+                vo.setQuestionIndex(intOf(meta.get("questionIndex")));
+            }
+            if (meta.get("isFollowUp") != null) {
+                vo.setIsFollowUp(Boolean.TRUE.equals(meta.get("isFollowUp")));
+            }
+            if (meta.get("matchedKeywords") != null) {
+                vo.setHitKeywords(strListOf(meta.get("matchedKeywords")));
+            }
+            if (meta.get("missingKeywords") != null) {
+                vo.setMissedKeywords(strListOf(meta.get("missingKeywords")));
+            }
+        }
         return vo;
     }
 
@@ -419,11 +626,17 @@ public class InterviewServiceImpl implements InterviewService {
         return value instanceof Number number ? number.intValue() : null;
     }
 
+    private static Integer intOf(Object value, int fallback) {
+        Integer v = intOf(value);
+        return v != null ? v : fallback;
+    }
+
     @SuppressWarnings("unchecked")
     private static Map<String, Object> mapOf(Object value) {
         return value instanceof Map<?, ?> map ? (Map<String, Object>) map : null;
     }
 
+    @SuppressWarnings("unchecked")
     private static List<String> strListOf(Object value) {
         if (value instanceof List<?> list) {
             List<String> result = new ArrayList<>(list.size());
@@ -435,5 +648,10 @@ public class InterviewServiceImpl implements InterviewService {
             return result;
         }
         return List.of();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> snapPlans(Object value) {
+        return value instanceof List<?> list ? (List<Map<String, Object>>) list : List.of();
     }
 }

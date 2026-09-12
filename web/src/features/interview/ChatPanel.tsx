@@ -54,8 +54,8 @@ export function ChatPanel({ messages, value, onChange, onSend, sending }: ChatPa
             >
               {m.content}
             </span>
-            {/* Per-question scoring info (shown after AI evaluation) */}
-            {m.role === 'assistant' && typeof m.questionScore === 'number' && (
+            {/* Per-question scoring info (shown after AI evaluation; 评分挂在被评估的那条消息上) */}
+            {typeof m.questionScore === 'number' && (
               <div className="mt-1.5 inline-flex flex-wrap items-center gap-2 rounded-md bg-surface-2 px-3 py-1.5 text-xs">
                 <span className="font-medium text-ink">
                   得分: <span className="font-mono text-brand">{m.questionScore}</span>

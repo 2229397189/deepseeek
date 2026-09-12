@@ -22,6 +22,9 @@ public interface InterviewService {
     /** 提交一次作答，驱动下一道题生成并持久化消息。 */
     InterviewDtos.InterviewTurn answer(Long userId, Long sessionId, InterviewDtos.AnswerRequest request);
 
+    /** NEXT 阶段：依据 questionPlan 主动推进到下一题（用户跳过 / 主动换题）。 */
+    InterviewDtos.MessageVO nextQuestion(Long userId, Long sessionId);
+
     /** 结束面试并生成终态报告。 */
     InterviewDtos.InterviewReport finish(Long userId, Long sessionId);
 

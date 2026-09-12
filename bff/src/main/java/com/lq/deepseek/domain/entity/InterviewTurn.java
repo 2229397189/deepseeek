@@ -41,6 +41,13 @@ public class InterviewTurn implements Serializable {
     /** 本轮评分（可选，由 agent 在 ANSWER/FINISH 阶段回填） */
     private BigDecimal score;
 
+    /** 本题考察的技能（用于 questionPlan 推进与终评聚合；P0-6 新增） */
+    private String skill;
+
+    /** 逐题评估元数据：questionIndex / isFollowUp / matchedKeywords / missingKeywords（P0-6 新增） */
+    @TableField(typeHandler = JacksonTypeHandler.class)
+    private Map<String, Object> evalMeta;
+
     private Integer latencyMs;
 
     @TableField(typeHandler = JacksonTypeHandler.class)
