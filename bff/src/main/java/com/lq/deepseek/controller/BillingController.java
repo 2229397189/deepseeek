@@ -50,4 +50,10 @@ public class BillingController {
         billingService.recharge(userId, request.getAmount(), key, request.getRemark());
         return Result.ok(billingService.getWallet(userId));
     }
+
+    @Operation(summary = "兑换码激活（P2-28）")
+    @PostMapping("/redeem")
+    public Result<BillingDtos.RedeemResult> redeem(@Valid @RequestBody BillingDtos.RedeemRequest request) {
+        return Result.ok(billingService.redeem(StpUtil.getLoginIdAsLong(), request.getCode()));
+    }
 }

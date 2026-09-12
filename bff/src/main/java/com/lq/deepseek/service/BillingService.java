@@ -50,4 +50,7 @@ public interface BillingService {
     /** 释放冻结（AI 调用失败回滚）。 */
     void unfreeze(Long userId, long amount, String bizType, Long bizId,
                   String idempotencyKey, String remark);
+
+    /** P2-28 兑换码激活：校验码 → 原子占用一次 → 发放奖励额度。 */
+    BillingDtos.RedeemResult redeem(Long userId, String code);
 }

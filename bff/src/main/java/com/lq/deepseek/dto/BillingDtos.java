@@ -1,5 +1,6 @@
 package com.lq.deepseek.dto;
 
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import lombok.Builder;
@@ -62,6 +63,26 @@ public final class BillingDtos {
         private String idempotencyKey;
 
         private String remark;
+    }
+
+    /** P2-28 兑换码请求。 */
+    @Data
+    public static class RedeemRequest {
+
+        @NotBlank(message = "请输入兑换码")
+        private String code;
+    }
+
+    /** P2-28 兑换结果。 */
+    @Data
+    @Builder
+    public static class RedeemResult {
+
+        /** 本次发放的额度。 */
+        private Long rewardCredit;
+
+        /** 变动后的可用额度（余额 - 冻结）。 */
+        private Long availableCredit;
     }
 
     /**

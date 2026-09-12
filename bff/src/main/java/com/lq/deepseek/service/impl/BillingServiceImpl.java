@@ -1,13 +1,16 @@
 package com.lq.deepseek.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.lq.deepseek.common.BusinessException;
 import com.lq.deepseek.common.ErrorCode;
 import com.lq.deepseek.domain.entity.BillingWallet;
 import com.lq.deepseek.domain.entity.CreditLedger;
+import com.lq.deepseek.domain.entity.InviteCode;
 import com.lq.deepseek.domain.mapper.BillingWalletMapper;
 import com.lq.deepseek.domain.mapper.CreditLedgerMapper;
+import com.lq.deepseek.domain.mapper.InviteCodeMapper;
 import com.lq.deepseek.dto.BillingDtos;
 import com.lq.deepseek.service.BillingService;
 import lombok.RequiredArgsConstructor;
@@ -16,6 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -38,6 +42,7 @@ public class BillingServiceImpl implements BillingService {
 
     private final BillingWalletMapper walletMapper;
     private final CreditLedgerMapper ledgerMapper;
+    private final InviteCodeMapper inviteCodeMapper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -118,6 +123,52 @@ public class BillingServiceImpl implements BillingService {
         writeLedger(userId, wallet.getId(), changeType, amount, after.getBalanceCredit(),
                 bizType, bizId, null, key, remark);
         return after.available();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public BillingDtos.RedeemResult redeem(Long userId, String code) {
+        if (!StringUtils.hasText(code)) {
+            throw new BusinessException(ErrorCode.PARAM_INVALID, "请输入兑换码");
+        }
+        String normalized = code.trim();
+
+        InviteCode invite = inviteCodeMapper.selectOne(new LambdaQueryWrapper<InviteCode>()
+                .eq(InviteCode::getCode, normalized));
+        if (invite == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "兑换码不存在");
+        }
+        if (!"ACTIVE".equalsIgnoreCase(invite.getStatus())) {
+            throw new BusinessException(ErrorCode.PARAM_INVALID, "兑换码已失效");
+        }
+        if (invite.getExpireAt() != null && invite.getExpireAt().isBefore(OffsetDateTime.now())) {
+            throw new BusinessException(ErrorCode.PARAM_INVALID, "兑换码已过期");
+        }
+        if (invite.getRewardCredit() == null || invite.getRewardCredit() <= 0) {
+            throw new BusinessException(ErrorCode.PARAM_INVALID, "兑换码无可发放额度");
+        }
+
+        // 原子占用一次：条件更新，更新 0 行即为已被抢完/失效，杜绝并发超额兑换
+        LambdaUpdateWrapper<InviteCode> uw = new LambdaUpdateWrapper<InviteCode>()
+                .eq(InviteCode::getId, invite.getId())
+                .eq(InviteCode::getStatus, invite.getStatus())
+                .setSql("used_count = used_count + 1");
+        if (invite.getMaxUses() != null) {
+            uw.lt(InviteCode::getUsedCount, invite.getMaxUses());
+        }
+        if (inviteCodeMapper.update(null, uw) == 0) {
+            throw new BusinessException(ErrorCode.PARAM_INVALID, "兑换码已被使用或已失效");
+        }
+
+        long reward = invite.getRewardCredit();
+        long available = grant(userId, reward, TYPE_GRANT, "INVITE_CODE", invite.getId(),
+                "redeem:" + userId + ":" + invite.getId(), "兑换码 " + normalized + " 激活");
+        log.info("兑换码已激活 userId={} code={} reward={}", userId, normalized, reward);
+
+        return BillingDtos.RedeemResult.builder()
+                .rewardCredit(reward)
+                .availableCredit(available)
+                .build();
     }
 
     @Override
