@@ -8,6 +8,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -52,6 +53,13 @@ public class ProfileController {
     public Result<Void> correct(@PathVariable Long id,
                                @Valid @RequestBody ProfileDtos.MemoryCorrectRequest request) {
         profileService.correctMemory(StpUtil.getLoginIdAsLong(), id, request.getCorrectedContent());
+        return Result.ok();
+    }
+
+    @Operation(summary = "删除一条记忆")
+    @DeleteMapping("/memories/{id}")
+    public Result<Void> deleteMemory(@PathVariable Long id) {
+        profileService.deleteMemory(StpUtil.getLoginIdAsLong(), id);
         return Result.ok();
     }
 }

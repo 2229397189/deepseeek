@@ -151,6 +151,26 @@ public class KbServiceImpl implements KbService {
         return result;
     }
 
+    @Override
+    public void deleteDocument(Long userId, Long documentId) {
+        if (documentId == null) {
+            throw new BusinessException(ErrorCode.PARAM_INVALID, "缺少文档 ID");
+        }
+        KbDocument document = documentMapper.selectOne(new LambdaQueryWrapper<KbDocument>()
+                .eq(KbDocument::getId, documentId)
+                .eq(KbDocument::getUserId, userId)
+                .eq(KbDocument::getDeleted, 0));
+        if (document == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "文档不存在");
+        }
+        // kb_chunks 无 deleted 列 → 物理删除切片；kb_documents 有 deleted 列 → 逻辑删除文档
+        chunkMapper.delete(new LambdaQueryWrapper<KbChunk>()
+                .eq(KbChunk::getDocumentId, documentId)
+                .eq(KbChunk::getUserId, userId));
+        documentMapper.deleteById(documentId);
+        log.info("知识库文档已删除 userId={} documentId={}（切片同步清理）", userId, documentId);
+    }
+
     // ------------------------------------------------------------------
     // 内部实现
     // ------------------------------------------------------------------

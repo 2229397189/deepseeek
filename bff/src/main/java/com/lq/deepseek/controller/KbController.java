@@ -7,8 +7,10 @@ import com.lq.deepseek.service.KbService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -52,5 +54,12 @@ public class KbController {
     @PostMapping("/reindex")
     public Result<KbDtos.KbReindexResult> reindex() {
         return Result.ok(kbService.reindex(StpUtil.getLoginIdAsLong()));
+    }
+
+    @Operation(summary = "删除文档（连带清理切片与向量）")
+    @DeleteMapping("/documents/{documentId}")
+    public Result<Void> deleteDocument(@PathVariable Long documentId) {
+        kbService.deleteDocument(StpUtil.getLoginIdAsLong(), documentId);
+        return Result.ok();
     }
 }

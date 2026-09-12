@@ -130,6 +130,14 @@ public class ProfileServiceImpl implements ProfileService {
         memoryMapper.updateById(memory);
     }
 
+    @Override
+    public void deleteMemory(Long userId, Long memoryId) {
+        requireOwned(userId, memoryId);
+        // long_term_memory 无 deleted 列，MyBatis-Plus 走物理删除
+        memoryMapper.deleteById(memoryId);
+        log.info("长期记忆已删除 userId={} memoryId={}", userId, memoryId);
+    }
+
     // ------------------------------------------------------------------
     // 内部实现
     // ------------------------------------------------------------------

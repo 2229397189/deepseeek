@@ -20,4 +20,7 @@ public interface ProfileService {
 
     /** 修正一条记忆的内容。 */
     void correctMemory(Long userId, Long memoryId, String correctedContent);
+
+    /** 删除一条记忆（物理删除：long_term_memory 表无 deleted 列）。 */
+    void deleteMemory(Long userId, Long memoryId);
 }

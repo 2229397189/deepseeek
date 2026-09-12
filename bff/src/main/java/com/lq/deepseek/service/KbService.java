@@ -21,4 +21,7 @@ public interface KbService {
 
     /** 触发重建索引（异步由 agent 完成，此处仅受理）。 */
     KbDtos.KbReindexResult reindex(Long userId);
+
+    /** 删除文档（逻辑删除文档 + 物理删除其切片/向量）。 */
+    void deleteDocument(Long userId, Long documentId);
 }
