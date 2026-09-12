@@ -15,7 +15,14 @@ import { MarkdownEditor } from './MarkdownEditor';
 import { ResumePreview } from './ResumePreview';
 import { ResumeAssistant } from './ResumeAssistant';
 
-/** 简历中心：三栏（编辑 / 预览 / 助手）。docs §6.2。 */
+/** P2-19 简历中心视图模式：并排 / 编辑 / 预览。 */
+const MODE_OPTIONS: { key: 'split' | 'edit' | 'preview'; label: string }[] = [
+  { key: 'split', label: '并排' },
+  { key: 'edit', label: '编辑' },
+  { key: 'preview', label: '预览' },
+];
+
+/** 简历中心：三栏（编辑 / 预览 / 助手）+ 双模式切换。docs §6.2。 */
 export function ResumeCenterPage(): JSX.Element {
   const qc = useQueryClient();
   const pushToast = useUiStore((s) => s.pushToast);
@@ -26,6 +33,8 @@ export function ResumeCenterPage(): JSX.Element {
   const [prevBody, setPrevBody] = useState<string | null>(null);
   const [selectedText, setSelectedText] = useState('');
   const [loadedAssetId, setLoadedAssetId] = useState<string | null>(null);
+  /** P2-19 当前视图模式，默认并排（保持原有三栏体验）。 */
+  const [mode, setMode] = useState<'split' | 'edit' | 'preview'>('split');
   const previewRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -68,7 +77,11 @@ export function ResumeCenterPage(): JSX.Element {
   };
 
   const handleExport = async () => {
-    if (!previewRef.current) return;
+    // 纯「编辑」模式下预览未挂载，无法取到导出节点
+    if (!previewRef.current) {
+      pushToast({ tone: 'warn', message: '请先切换到「并排」或「预览」模式再导出' });
+      return;
+    }
     try {
       const html2pdf = (await import('html2pdf.js')).default;
       html2pdf()
@@ -162,6 +175,23 @@ export function ResumeCenterPage(): JSX.Element {
           {resumeQ.data?.profile.experienceYears != null && (
             <Badge tone="brand">{resumeQ.data.profile.experienceYears} 年经验</Badge>
           )}
+          {/* P2-19 视图模式切换 */}
+          <div className="inline-flex rounded-md bg-surface-2 p-1">
+            {MODE_OPTIONS.map((opt) => (
+              <button
+                key={opt.key}
+                type="button"
+                onClick={() => setMode(opt.key)}
+                className={`rounded px-2.5 py-1 text-xs transition-colors ${
+                  mode === opt.key
+                    ? 'bg-surface text-ink shadow-sm'
+                    : 'text-ink-faint hover:text-ink-soft'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <Button size="sm" variant="secondary" onClick={() => saveMut.mutate()} loading={saveMut.isPending}>
@@ -180,12 +210,24 @@ export function ResumeCenterPage(): JSX.Element {
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Card className="h-[72vh]" bodyPadding={false}>
-          <MarkdownEditor value={body} onChange={setBody} onSelectText={setSelectedText} />
-        </Card>
-        <Card className="h-[72vh]" bodyPadding={false}>
-          <ResumePreview ref={previewRef} markdown={body} />
-        </Card>
+        {mode === 'split' ? (
+          <>
+            <Card className="h-[72vh]" bodyPadding={false}>
+              <MarkdownEditor value={body} onChange={setBody} onSelectText={setSelectedText} />
+            </Card>
+            <Card className="h-[72vh]" bodyPadding={false}>
+              <ResumePreview ref={previewRef} markdown={body} />
+            </Card>
+          </>
+        ) : (
+          <Card className="h-[72vh] lg:col-span-2" bodyPadding={false}>
+            {mode === 'edit' ? (
+              <MarkdownEditor value={body} onChange={setBody} onSelectText={setSelectedText} />
+            ) : (
+              <ResumePreview ref={previewRef} markdown={body} />
+            )}
+          </Card>
+        )}
         <Card className="h-[72vh]" bodyPadding={false}>
           {assetId ? (
             <ResumeAssistant
