@@ -119,6 +119,7 @@ export function AdminKbPage(): JSX.Element {
           uploading={uploadMut.isPending}
           onReindex={() => reindexMut.mutate()}
           reindexing={reindexMut.isPending}
+          highlightQuery={submitted}
         />
 
         <HybridSearch

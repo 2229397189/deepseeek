@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   PhoneOff,
   Video,
+  Mic,
   PenTool,
   Loader2,
   CheckCircle2,
@@ -21,6 +22,7 @@ import type { InterviewReport, MessageVO } from './types';
 import { ChatPanel } from './ChatPanel';
 import { CameraPanel } from './CameraPanel';
 import { ScratchPad } from './ScratchPad';
+import { VoiceWaveform } from './VoiceWaveform';
 import { ReportPanel } from './ReportPanel';
 
 const PREP_STEPS: string[] = [
@@ -41,6 +43,7 @@ export function InterviewRoomPage(): JSX.Element {
   const [report, setReport] = useState<InterviewReport | null>(null);
   const [cameraOn, setCameraOn] = useState(false);
   const [scratchOpen, setScratchOpen] = useState(false);
+  const [voiceOn, setVoiceOn] = useState(false);
 
   // Preparation pipeline animation
   const [preparing, setPreparing] = useState(true);
@@ -175,6 +178,9 @@ export function InterviewRoomPage(): JSX.Element {
               已上传简历: {resumeName}
             </Badge>
           )}
+          <Button size="sm" variant="secondary" onClick={() => setVoiceOn((v) => !v)}>
+            <Mic size={15} /> 声音
+          </Button>
           <Button size="sm" variant="secondary" onClick={() => setScratchOpen((v) => !v)}>
             <PenTool size={15} /> 构思板
           </Button>
@@ -253,10 +259,15 @@ export function InterviewRoomPage(): JSX.Element {
                 <ScratchPad />
               </Card>
             )}
-            {!cameraOn && !scratchOpen && (
+            {voiceOn && (
+              <Card title="声音">
+                <VoiceWaveform />
+              </Card>
+            )}
+            {!cameraOn && !scratchOpen && !voiceOn && (
               <Card>
                 <p className="py-6 text-center text-xs text-ink-faint">
-                  点击「摄像头」开启本地预览，或「构思板」记录要点。
+                  点击「摄像头」开启本地预览，「构思板」记录要点，或「声音」查看麦克风波形。
                 </p>
               </Card>
             )}

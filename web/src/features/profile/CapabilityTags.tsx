@@ -11,6 +11,11 @@ function levelTone(level: string): Tone {
 
 /** 能力标签云（java_basic / JD 未覆盖 等）。docs §6.9 / §1。 */
 export function CapabilityTags({ tags }: { tags: CapabilityTag[] }): JSX.Element {
+  // P2-24 按置信度降序（同分按标签名升序，保证顺序稳定）
+  const sorted = [...tags].sort(
+    (a, b) => b.confidence - a.confidence || a.tag.localeCompare(b.tag),
+  );
+
   if (tags.length === 0) {
     return (
       <EmptyState
@@ -22,7 +27,7 @@ export function CapabilityTags({ tags }: { tags: CapabilityTag[] }): JSX.Element
 
   return (
     <div className="flex flex-wrap gap-2">
-      {tags.map((t) => (
+      {sorted.map((t) => (
         <span
           key={`${t.tag}-${t.category}`}
           className="inline-flex items-center gap-1.5 rounded-md border border-line bg-surface px-2.5 py-1.5"
