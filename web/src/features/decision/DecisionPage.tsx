@@ -3,9 +3,11 @@ import { useQuery } from '@tanstack/react-query';
 import { Sparkles, FileText } from 'lucide-react';
 import { Card } from '@/shared/components/Card';
 import { Button } from '@/shared/components/Button';
-import { Badge } from '@/shared/components/Badge';
+import { Badge, type Tone } from '@/shared/components/Badge';
 import { Skeleton } from '@/shared/components/Skeleton';
 import { ErrorState } from '@/shared/components/ErrorState';
+import { EmptyState } from '@/shared/components/EmptyState';
+import { formatDateTime } from '@/lib/format';
 import { useUiStore } from '@/store/uiStore';
 import { listResumes } from '@/features/resume/api';
 import { listSessions, getSession } from './api';
@@ -19,6 +21,18 @@ import {
   type AgentStep,
   type StreamHandle,
 } from '@/lib/sseClient';
+
+/** 会话状态 → Badge 语义色 + 中文标签（docs §3.7：绿=完成、红=失败、琥珀=待确认、蓝=进行中）。 */
+const SESSION_STATUS_META: Record<string, { tone: Tone; label: string }> = {
+  PENDING: { tone: 'amber', label: '待确认' },
+  RUNNING: { tone: 'info', label: '进行中' },
+  SUCCEEDED: { tone: 'ok', label: '已完成' },
+  FAILED: { tone: 'danger', label: '失败' },
+};
+
+function sessionStatusMeta(status: string): { tone: Tone; label: string } {
+  return SESSION_STATUS_META[status] ?? { tone: 'neutral', label: status || '未知' };
+}
 
 /** JD 分析页。docs §6.3。SSE 流式调用改造。 */
 export function DecisionPage(): JSX.Element {
@@ -146,38 +160,51 @@ export function DecisionPage(): JSX.Element {
   return (
     <div className="flex gap-4">
       {/* Left sidebar: session history */}
-      <div className="hidden w-56 shrink-0 space-y-1 overflow-auto lg:block">
-        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-faint">
-          评估记录
+      <div className="hidden w-56 shrink-0 space-y-2 overflow-auto lg:block">
+        <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-faint">
+          历史会话
         </h3>
         {sessionsQ.isLoading ? (
           <div className="space-y-2">
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-16 w-full" />
+            <Skeleton className="h-16 w-full" />
           </div>
         ) : sessionsQ.isError ? (
           <ErrorState message="加载失败" onRetry={() => sessionsQ.refetch()} />
         ) : (sessionsQ.data ?? []).length === 0 ? (
-          <p className="text-xs text-ink-faint">暂无评估记录</p>
+          <EmptyState
+            title="暂无历史会话"
+            description="上传或粘贴 JD 并分析后，记录会显示在这里。"
+            className="!px-3 !py-10"
+          />
         ) : (
-          (sessionsQ.data ?? []).map((s: SessionBrief) => (
-            <button
-              key={s.id}
-              onClick={() => loadSession(s.id)}
-              className={[
-                'w-full rounded-md px-3 py-2 text-left text-sm transition-colors',
-                selectedSessionId === s.id
-                  ? 'bg-brand/10 text-brand'
-                  : 'text-ink-soft hover:bg-surface-2',
-              ].join(' ')}
-            >
-              <p className="truncate font-medium">{s.title ?? s.jobTitle ?? '未命名'}</p>
-              <p className="mt-0.5 text-2xs text-ink-faint">
-                {s.createdAt?.slice(0, 10) ?? ''}
-                {typeof s.score === 'number' && ` · ${s.score}分`}
-              </p>
-            </button>
-          ))
+          (sessionsQ.data ?? []).map((s: SessionBrief) => {
+            const meta = sessionStatusMeta(s.status);
+            return (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => loadSession(s.id)}
+                className={[
+                  'w-full rounded-md border px-3 py-2 text-left transition-colors',
+                  selectedSessionId === s.id
+                    ? 'border-brand/40 bg-brand/10'
+                    : 'border-transparent hover:bg-surface-2',
+                ].join(' ')}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <p className="truncate text-sm font-medium text-ink">
+                    {s.title ?? s.jobTitle ?? '未命名'}
+                  </p>
+                  <Badge tone={meta.tone}>{meta.label}</Badge>
+                </div>
+                <p className="mt-1 font-mono text-2xs text-ink-faint">
+                  {s.createdAt ? formatDateTime(s.createdAt) : '—'}
+                  {typeof s.score === 'number' && ` · ${s.score}分`}
+                </p>
+              </button>
+            );
+          })
         )}
       </div>
 
