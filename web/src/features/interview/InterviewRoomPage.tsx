@@ -21,6 +21,7 @@ import type { InterviewReport, MessageVO } from './types';
 import { ChatPanel } from './ChatPanel';
 import { CameraPanel } from './CameraPanel';
 import { ScratchPad } from './ScratchPad';
+import { ReportPanel } from './ReportPanel';
 
 const PREP_STEPS: string[] = [
   '创建面试房间',
@@ -229,7 +230,7 @@ export function InterviewRoomPage(): JSX.Element {
 
       {/* Main content */}
       {report ? (
-        <ReportCard report={report} onBack={() => navigate('/interview')} />
+        <ReportPanel report={report} messages={messages} onBack={() => navigate('/interview')} />
       ) : !preparing ? (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
           <Card className="h-[78vh] lg:col-span-2" bodyPadding={false}>
@@ -263,68 +264,5 @@ export function InterviewRoomPage(): JSX.Element {
         </div>
       ) : null}
     </div>
-  );
-}
-
-function ReportCard({
-  report,
-  onBack,
-}: {
-  report: InterviewReport;
-  onBack: () => void;
-}): JSX.Element {
-  const dimensions = Object.entries(report.dimensions ?? {});
-  const maxScore = Math.max(1, ...dimensions.map(([, v]) => v));
-  return (
-    <Card title="面试报告">
-      <div className="space-y-5">
-        <div className="flex items-center gap-4">
-          <div className="flex h-20 w-20 shrink-0 flex-col items-center justify-center rounded-lg bg-brand-soft">
-            <span className="font-mono text-3xl font-semibold text-brand">
-              {Math.round(report.score)}
-            </span>
-            <span className="text-2xs text-ink-faint">综合评分</span>
-          </div>
-          <p className="text-base text-ink-soft">{report.suggestion}</p>
-        </div>
-
-        {dimensions.length > 0 && (
-          <div>
-            <h4 className="mb-2 text-sm font-semibold text-ink">维度得分</h4>
-            <div className="space-y-2">
-              {dimensions.map(([name, score]) => (
-                <div key={name} className="flex items-center gap-3">
-                  <span className="w-24 shrink-0 truncate text-xs text-ink-soft">{name}</span>
-                  <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface-2">
-                    <div
-                      className="h-full rounded-full bg-brand"
-                      style={{ width: `${(score / maxScore) * 100}%` }}
-                    />
-                  </div>
-                  <span className="w-8 text-right font-mono text-xs text-ink">{score}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {report.weakPoints.length > 0 && (
-          <div>
-            <h4 className="mb-2 text-sm font-semibold text-ink">薄弱点</h4>
-            <div className="flex flex-wrap gap-1.5">
-              {report.weakPoints.map((w, i) => (
-                <Badge key={i} tone="danger">
-                  {w}
-                </Badge>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <Button onClick={onBack}>
-          <ArrowLeft size={15} /> 返回面试列表
-        </Button>
-      </div>
-    </Card>
   );
 }
