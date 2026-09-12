@@ -12,6 +12,8 @@ import { ErrorState } from '@/shared/components/ErrorState';
 import { formatDateTime, formatScore } from '@/lib/format';
 import { useUiStore } from '@/store/uiStore';
 import { deleteInterviewSession, listInterviewSessions, startInterview } from './api';
+import { listResumes } from '../resume/api';
+import { ModelPicker } from '../workbench/ModelPicker';
 import type { InterviewSession } from './types';
 
 function statusMeta(row: InterviewSession): { tone: 'neutral' | 'brand' | 'ok'; label: string } {
@@ -26,6 +28,8 @@ export function InterviewListPage(): JSX.Element {
   const qc = useQueryClient();
   const pushToast = useUiStore((s) => s.pushToast);
   const resumeAssetId = useUiStore((s) => s.selectedResumeAssetId);
+  const setResumeAssetId = useUiStore((s) => s.setSelectedResumeAssetId);
+  const modelValue = useUiStore((s) => s.modelPickerValue);
 
   const [archiveId, setArchiveId] = useState<string | null>(null);
 
@@ -34,8 +38,14 @@ export function InterviewListPage(): JSX.Element {
     queryFn: listInterviewSessions,
   });
 
+  const resumesQ = useQuery({
+    queryKey: ['resumes-for-interview'],
+    queryFn: listResumes,
+  });
+
   const startMut = useMutation({
-    mutationFn: () => startInterview({ resumeAssetId: resumeAssetId ?? '' }),
+    mutationFn: () =>
+      startInterview({ resumeAssetId: resumeAssetId ?? '', model: modelValue }),
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ['interviewSessions'] });
       navigate(`/interview/${res.sessionId}`);
@@ -54,8 +64,7 @@ export function InterviewListPage(): JSX.Element {
 
   const start = () => {
     if (!resumeAssetId) {
-      pushToast({ tone: 'warn', message: '请先在「简历中心」选择一份简历' });
-      navigate('/resume');
+      pushToast({ tone: 'warn', message: '请先选择一份简历再开始模拟面试' });
       return;
     }
     startMut.mutate();
@@ -69,11 +78,29 @@ export function InterviewListPage(): JSX.Element {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-lg font-semibold text-ink">模拟面试</h1>
-        <Button onClick={start} loading={startMut.isPending}>
-          <Plus size={15} /> 开始第一场模拟面试
-        </Button>
+        <div className="flex flex-wrap items-center gap-3">
+          {/* P1-12 简历选择（驱动出题方向） */}
+          <select
+            value={resumeAssetId ?? ''}
+            onChange={(e) => setResumeAssetId(e.target.value || null)}
+            className="h-9 rounded-md border border-line bg-surface px-3 text-base text-ink outline-none transition-colors hover:bg-surface-2"
+            aria-label="选择简历"
+          >
+            <option value="">选择简历…</option>
+            {(resumesQ.data ?? []).map((r) => (
+              <option key={r.assetId} value={r.assetId}>
+                {r.originalName ?? r.assetId}
+              </option>
+            ))}
+          </select>
+          {/* P1-13 模型选择（复用工作台 ModelPicker，写入 uiStore.modelPickerValue） */}
+          <ModelPicker />
+          <Button onClick={start} loading={startMut.isPending}>
+            <Plus size={15} /> 开始模拟面试
+          </Button>
+        </div>
       </div>
 
       {listQ.isLoading ? (
