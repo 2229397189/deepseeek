@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+from ..core.context_snapshot import slice_recent_texts
 from ..core.errors import PayloadInvalid
 from ..core.prompts import (INTERVIEW_FOLLOWUP_PROMPT, INTERVIEW_QUESTION_PROMPT,
                             INTERVIEW_REPORT_PROMPT, PROMPT_VERSION, SYSTEM_BASE)
@@ -63,6 +64,9 @@ DIMENSION_HINT = {
 }
 
 MAX_QUESTIONS = 8
+
+# 生成评语时允许带进提示词的历史轮次预算（token 粗估口径，见 core/context_snapshot）
+REPORT_HISTORY_TOKEN_BUDGET = 1600
 
 
 async def handle(ctx: AgentContext) -> AgentOutcome:
@@ -259,18 +263,31 @@ async def _finish(ctx: AgentContext) -> AgentOutcome:
     await recorder.done("aggregate_scores", f"共 {len(item_scores)} 题，均分 {total}", started)
 
     started = await recorder.start("generate_report")
+    # 历史按「最近优先」切片进预算，而不是写死 history[:6]：
+    # 短面试全量保留，长面试优雅降级并如实上报省略了多少轮。
+    history_lines = [
+        f"Q{i + 1}：{str(it.get('question'))[:120]}\nA：{str(it.get('answer'))[:300]}"
+        for i, it in enumerate(history)
+    ]
+    kept_lines = slice_recent_texts(history_lines, REPORT_HISTORY_TOKEN_BUDGET)
+    dropped_turns = len(history_lines) - len(kept_lines)
     messages = [
         LlmMessage(role="system", content=INTERVIEW_REPORT_PROMPT.format(system=SYSTEM_BASE)),
         LlmMessage(role="user", content=(
             f"{task_marker('INTERVIEW_REPORT')}\n"
             f"岗位：{ctx.payload.get('jobTitle') or '目标岗位'}\n"
             f"逐题得分：{item_scores}\n薄弱技能：{'、'.join(weak_skills) or '无明显薄弱点'}\n"
-            + "\n".join(f"Q{i + 1}：{str(it.get('question'))[:120]}\nA：{str(it.get('answer'))[:300]}"
-                        for i, it in enumerate(history[:6]))
+            + "\n".join(kept_lines)
+            + (f"\n（注：更早的 {dropped_turns} 轮因上下文预算被省略）" if dropped_turns else "")
         )),
     ]
     report = await ctx.llm.chat(messages)
-    await recorder.done("generate_report", "已生成面试评语", started)
+    await recorder.done(
+        "generate_report",
+        f"已生成面试评语（引用 {len(kept_lines)}/{len(history_lines)} 轮"
+        + (f"，因预算省略 {dropped_turns} 轮" if dropped_turns else ""),
+        started,
+    )
 
     total_dimensions = len(item_scores) or 1
     output = {
