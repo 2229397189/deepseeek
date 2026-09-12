@@ -11,6 +11,16 @@ export interface MessageVO {
   role: 'user' | 'assistant' | 'system';
   content: string;
   createdAt?: string;
+  /** 该题得分（仅 assistant 的评分消息携带）。 */
+  questionScore?: number;
+  /** 命中关键词。 */
+  hitKeywords?: string[];
+  /** 缺失关键词。 */
+  missedKeywords?: string[];
+  /** 是否为追问。 */
+  isFollowUp?: boolean;
+  /** 题号。 */
+  questionIndex?: number;
 }
 
 export interface InterviewSessionDetail {
