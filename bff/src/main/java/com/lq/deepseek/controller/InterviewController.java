@@ -9,6 +9,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -75,5 +76,12 @@ public class InterviewController {
     @PostMapping("/transcribe")
     public Result<InterviewDtos.TranscribeVO> transcribe(@Valid @RequestBody InterviewDtos.TranscribeRequest request) {
         return Result.ok(interviewService.transcribe(StpUtil.getLoginIdAsLong(), request));
+    }
+
+    @Operation(summary = "归档（逻辑删除）一场面试会话")
+    @DeleteMapping("/sessions/{sessionId}")
+    public Result<Void> archive(@PathVariable Long sessionId) {
+        interviewService.archive(StpUtil.getLoginIdAsLong(), sessionId);
+        return Result.ok();
     }
 }

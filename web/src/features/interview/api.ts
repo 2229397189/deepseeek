@@ -1,4 +1,4 @@
-import { get, post } from '@/lib/apiClient';
+import { del, get, post } from '@/lib/apiClient';
 import type {
   InterviewReport,
   InterviewSession,
@@ -31,6 +31,11 @@ export function answerInterview(id: string, content: string): Promise<InterviewT
 /** POST /interview/sessions/{id}/finish */
 export function finishInterview(id: string): Promise<InterviewReport> {
   return post<InterviewReport>(`/api/interview/sessions/${id}/finish`, { id });
+}
+
+/** DELETE /interview/sessions/{id} —— 归档（逻辑删除）。 */
+export function deleteInterviewSession(id: string): Promise<void> {
+  return del<void>(`/api/interview/sessions/${id}`);
 }
 
 /** POST /interview/sessions/{id}/next —— NEXT 阶段：依据出题计划主动推进到下一题 */

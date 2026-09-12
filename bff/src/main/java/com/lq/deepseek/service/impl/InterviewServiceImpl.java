@@ -441,6 +441,14 @@ public class InterviewServiceImpl implements InterviewService {
     }
 
     @Override
+    public void archive(Long userId, Long sessionId) {
+        requireOwned(userId, sessionId);
+        // 逻辑删除（logic-delete-field=deleted）：会话消息与报告保留，便于误删找回
+        sessionMapper.deleteById(sessionId);
+        log.info("面试会话已归档 userId={} sessionId={}", userId, sessionId);
+    }
+
+    @Override
     public InterviewDtos.TranscribeVO transcribe(Long userId, InterviewDtos.TranscribeRequest request) {
         InterviewDtos.TranscribeVO vo = new InterviewDtos.TranscribeVO();
         if (request == null || !StringUtils.hasText(request.getAudio())) {

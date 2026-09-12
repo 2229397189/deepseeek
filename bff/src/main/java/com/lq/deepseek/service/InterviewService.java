@@ -33,4 +33,7 @@ public interface InterviewService {
 
     /** 语音转写（ASR；无配置时返回优雅降级占位文本）。 */
     InterviewDtos.TranscribeVO transcribe(Long userId, InterviewDtos.TranscribeRequest request);
+
+    /** 归档（逻辑删除）一场面试会话，历史消息与报告保留。 */
+    void archive(Long userId, Long sessionId);
 }

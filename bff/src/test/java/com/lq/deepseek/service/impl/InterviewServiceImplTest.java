@@ -407,6 +407,20 @@ class InterviewServiceImplTest {
         verify(gateway, org.mockito.Mockito.never()).invoke(any());
     }
 
+    @Test
+    void archive_logicalDeletesOwnedSession_andCallsDeleteById() {
+        InterviewSession s = new InterviewSession();
+        s.setId(SESSION_ID);
+        s.setUserId(USER_ID);
+        storedSessions.add(s);
+        when(sessionMapper.deleteById(SESSION_ID)).thenReturn(1);
+
+        service.archive(USER_ID, SESSION_ID);
+
+        verify(sessionMapper).selectById(SESSION_ID);
+        verify(sessionMapper).deleteById(SESSION_ID);
+    }
+
     // ------------------------------------------------------------------
 
     private static InterviewSession newSession(Long id) {
