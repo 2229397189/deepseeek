@@ -22,12 +22,6 @@ import { ChatPanel } from './ChatPanel';
 import { CameraPanel } from './CameraPanel';
 import { ScratchPad } from './ScratchPad';
 
-/** 准备面试流水线步骤。 */
-interface PrepStep {
-  label: string;
-  done: boolean;
-}
-
 const PREP_STEPS: string[] = [
   '创建面试房间',
   '接通面试官',
@@ -118,7 +112,7 @@ export function InterviewRoomPage(): JSX.Element {
   const isInProgress = !isFinished && !preparing;
   const sessionDetail = detailQ.data;
   const resumeName = sessionDetail?.sessionId
-    ? (detailQ.data as Record<string, unknown>)?.resumeName as string | undefined
+    ? (detailQ.data as unknown as Record<string, unknown>)?.resumeName as string | undefined
     : undefined;
 
   if (detailQ.isLoading) {
