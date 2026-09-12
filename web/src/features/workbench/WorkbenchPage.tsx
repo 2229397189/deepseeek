@@ -4,10 +4,10 @@ import { useMutation } from '@tanstack/react-query';
 import { FileText, ClipboardList, MessagesSquare, ArrowRight } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Card } from '@/shared/components/Card';
-import { Badge } from '@/shared/components/Badge';
 import { IntentInput } from './IntentInput';
 import { ModelPicker } from './ModelPicker';
 import { MockToggle } from './MockToggle';
+import { RecentSessions } from './RecentSessions';
 import { detectIntent } from './api';
 import { useUiStore } from '@/store/uiStore';
 import { useAuthStore } from '@/store/authStore';
@@ -95,10 +95,7 @@ export function WorkbenchPage(): JSX.Element {
       </section>
 
       <section>
-        <Badge tone="neutral">评估记录</Badge>
-        <p className="mt-2 text-xs text-ink-faint">
-          历史 JD 分析与模拟面试记录可在对应页面查看。
-        </p>
+        <RecentSessions />
       </section>
     </div>
   );
