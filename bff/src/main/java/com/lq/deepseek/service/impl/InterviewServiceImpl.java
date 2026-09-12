@@ -8,10 +8,12 @@ import com.lq.deepseek.domain.entity.FileAsset;
 import com.lq.deepseek.domain.entity.InterviewReport;
 import com.lq.deepseek.domain.entity.InterviewSession;
 import com.lq.deepseek.domain.entity.InterviewTurn;
+import com.lq.deepseek.domain.entity.LongTermMemory;
 import com.lq.deepseek.domain.mapper.FileAssetMapper;
 import com.lq.deepseek.domain.mapper.InterviewReportMapper;
 import com.lq.deepseek.domain.mapper.InterviewSessionMapper;
 import com.lq.deepseek.domain.mapper.InterviewTurnMapper;
+import com.lq.deepseek.domain.mapper.LongTermMemoryMapper;
 import com.lq.deepseek.dto.InterviewDtos;
 import com.lq.deepseek.gateway.AiInvocationGateway;
 import com.lq.deepseek.gateway.model.AgentInvokeCommand;
@@ -71,6 +73,7 @@ public class InterviewServiceImpl implements InterviewService {
     private final InterviewSessionMapper sessionMapper;
     private final InterviewTurnMapper turnMapper;
     private final InterviewReportMapper reportMapper;
+    private final LongTermMemoryMapper longTermMemoryMapper;
     private final FileAssetMapper fileAssetMapper;
     private final AiInvocationGateway gateway;
     private final ObjectMapper objectMapper;
@@ -235,6 +238,18 @@ public class InterviewServiceImpl implements InterviewService {
         report.setWeakPoints(weakPoints);
         report.setSuggestion(suggestion);
         reportMapper.insert(report);
+
+        // P0-7: 薄弱点回写用户画像 —— 每个薄弱点插入 PENDING 长期记忆
+        if (weakPoints != null && !weakPoints.isEmpty()) {
+            for (String wp : weakPoints) {
+                LongTermMemory memory = new LongTermMemory();
+                memory.setUserId(userId);
+                memory.setContent("面试薄弱点: " + wp);
+                memory.setStatus("PENDING");
+                longTermMemoryMapper.insert(memory);
+            }
+            log.info("面试薄弱点已回写画像 userId={} sessionId={} count={}", userId, sessionId, weakPoints.size());
+        }
 
         session.setStatus(STATUS_FINISHED);
         session.setCurrentStage("FINISHED");

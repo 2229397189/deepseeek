@@ -7,7 +7,9 @@ import com.lq.deepseek.common.BusinessException;
 import com.lq.deepseek.common.ErrorCode;
 import com.lq.deepseek.config.props.LqProperties;
 import com.lq.deepseek.domain.entity.FileAsset;
+import com.lq.deepseek.domain.entity.ResumeVersion;
 import com.lq.deepseek.domain.mapper.FileAssetMapper;
+import com.lq.deepseek.domain.mapper.ResumeVersionMapper;
 import com.lq.deepseek.dto.ResumeDtos;
 import com.lq.deepseek.gateway.AiInvocationGateway;
 import com.lq.deepseek.gateway.model.AgentInvokeCommand;
@@ -70,6 +72,7 @@ public class ResumeServiceImpl implements ResumeService {
     private static final DateTimeFormatter MONTH = DateTimeFormatter.ofPattern("yyyyMM");
 
     private final FileAssetMapper fileAssetMapper;
+    private final ResumeVersionMapper resumeVersionMapper;
     private final AiInvocationGateway gateway;
     private final LqProperties properties;
     private final ObjectMapper objectMapper;
@@ -212,10 +215,60 @@ public class ResumeServiceImpl implements ResumeService {
         profile.put("body", body);
         fileAssetMapper.updateParseState(asset.getId(), asset.getParseStatus(), toJson(profile), null);
 
+        // Create version snapshot
+        int nextVer = resumeVersionMapper.maxVersionNo(assetId) + 1;
+        ResumeVersion version = new ResumeVersion();
+        version.setAssetId(assetId);
+        version.setUserId(userId);
+        version.setVersionNo(nextVer);
+        version.setBody(body);
+        version.setChangeDesc("手动保存 v" + nextVer);
+        resumeVersionMapper.insert(version);
+
         ResumeDtos.SaveBodyResult result = new ResumeDtos.SaveBodyResult();
         result.setAssetId(asset.getId());
         result.setMessage("正文已保存");
+        result.setVersionNo(nextVer);
         return result;
+    }
+
+    @Override
+    public List<ResumeDtos.VersionVO> listVersions(Long userId, Long assetId) {
+        requireOwned(userId, assetId);
+        List<ResumeVersion> versions = resumeVersionMapper.listByAsset(assetId);
+        return versions.stream().map(v -> {
+            ResumeDtos.VersionVO vo = new ResumeDtos.VersionVO();
+            vo.setVersionNo(v.getVersionNo());
+            vo.setChangeDesc(v.getChangeDesc());
+            vo.setCreatedAt(v.getCreatedAt() != null ? v.getCreatedAt().toString() : null);
+            String preview = v.getBody() != null && v.getBody().length() > 200
+                    ? v.getBody().substring(0, 200) + "…"
+                    : v.getBody();
+            vo.setBodyPreview(preview);
+            return vo;
+        }).toList();
+    }
+
+    @Override
+    public ResumeDtos.SaveBodyResult rollback(Long userId, Long assetId, int versionNo) {
+        requireOwned(userId, assetId);
+        ResumeVersion target = resumeVersionMapper.selectByVersion(assetId, versionNo);
+        if (target == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "版本不存在: v" + versionNo);
+        }
+        // Rollback = save the old version's body as a new version
+        return saveBody(userId, assetId, target.getBody());
+    }
+
+    @Override
+    public String exportBody(Long userId, Long assetId, String format) {
+        FileAsset asset = requireOwned(userId, assetId);
+        Map<String, Object> profile = asset.getParseResult();
+        if (profile == null || !(profile.get("body") instanceof String bodyStr)) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "简历正文不存在");
+        }
+        // Currently only Markdown export is supported; PDF would require a headless render
+        return bodyStr;
     }
 
     // -----------------------------------------------------------------------

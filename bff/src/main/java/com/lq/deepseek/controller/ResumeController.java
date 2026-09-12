@@ -61,4 +61,24 @@ public class ResumeController {
                                                       @Valid @RequestBody ResumeDtos.SaveBodyRequest request) {
         return Result.ok(resumeService.saveBody(StpUtil.getLoginIdAsLong(), assetId, request.getBody()));
     }
+
+    @Operation(summary = "简历版本列表")
+    @GetMapping("/{assetId}/versions")
+    public Result<List<ResumeDtos.VersionVO>> listVersions(@PathVariable Long assetId) {
+        return Result.ok(resumeService.listVersions(StpUtil.getLoginIdAsLong(), assetId));
+    }
+
+    @Operation(summary = "回滚到指定版本")
+    @PostMapping("/{assetId}/versions/{versionNo}/rollback")
+    public Result<ResumeDtos.SaveBodyResult> rollback(@PathVariable Long assetId,
+                                                      @PathVariable int versionNo) {
+        return Result.ok(resumeService.rollback(StpUtil.getLoginIdAsLong(), assetId, versionNo));
+    }
+
+    @Operation(summary = "导出简历正文")
+    @GetMapping("/{assetId}/export")
+    public Result<String> exportBody(@PathVariable Long assetId,
+                                     @RequestParam(defaultValue = "md") String format) {
+        return Result.ok(resumeService.exportBody(StpUtil.getLoginIdAsLong(), assetId, format));
+    }
 }

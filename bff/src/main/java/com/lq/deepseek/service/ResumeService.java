@@ -31,4 +31,13 @@ public interface ResumeService {
 
     /** 保存简历正文（Markdown）。 */
     ResumeDtos.SaveBodyResult saveBody(Long userId, Long assetId, String body);
+
+    /** 查询简历版本列表。 */
+    java.util.List<ResumeDtos.VersionVO> listVersions(Long userId, Long assetId);
+
+    /** 回滚到指定版本。 */
+    ResumeDtos.SaveBodyResult rollback(Long userId, Long assetId, int versionNo);
+
+    /** 导出简历正文（Markdown 格式）。 */
+    String exportBody(Long userId, Long assetId, String format);
 }

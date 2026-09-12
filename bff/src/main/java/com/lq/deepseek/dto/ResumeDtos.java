@@ -90,5 +90,16 @@ public final class ResumeDtos {
     public static class SaveBodyResult {
         private Long assetId;
         private String message;
+        private Integer versionNo;
+    }
+
+    /** 简历版本简要。 */
+    @Data
+    public static class VersionVO {
+        private Integer versionNo;
+        private String changeDesc;
+        private String createdAt;
+        /** 正文前 200 字预览。 */
+        private String bodyPreview;
     }
 }

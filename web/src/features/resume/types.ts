@@ -74,3 +74,12 @@ export interface PolishVO {
   costCredit: number;
   flightMode: boolean;
 }
+
+/** 简历版本。 */
+export interface VersionVO {
+  versionNo: number;
+  changeDesc?: string;
+  createdAt?: string;
+  bodyPreview?: string;
+}
+
