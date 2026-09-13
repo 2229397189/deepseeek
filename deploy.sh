@@ -61,8 +61,26 @@ need_cmd() {
 }
 need_cmd docker
 need_cmd java
-need_cmd python3
 need_cmd curl
+
+# Python 必须 >= 3.10：pydantic v2 会在运行时求值 `X | Y` 之类的新式标注，3.6/3.8 会直接报错。
+# 系统自带 python3 常常偏老（如阿里云 Linux 3 是 3.6），所以这里挑一个够新的解释器；
+# 也可用 PYTHON_BIN=python3.11 显式指定。
+pick_python() {
+  local c ver
+  for c in python3.13 python3.12 python3.11 python3.10 python3; do
+    command -v "$c" >/dev/null 2>&1 || continue
+    ver="$("$c" -c 'import sys;print(sys.version_info[0]*100+sys.version_info[1])' 2>/dev/null)"
+    if [ -n "$ver" ] && [ "$ver" -ge 310 ] 2>/dev/null; then echo "$c"; return 0; fi
+  done
+  return 1
+}
+PYTHON_BIN="${PYTHON_BIN:-$(pick_python)}"
+if [ -z "${PYTHON_BIN:-}" ]; then
+  err "未找到 Python >= 3.10。请安装（如 dnf install -y python3.11 python3.11-pip），或用 PYTHON_BIN=python3.11 指定。"
+  exit 1
+fi
+ok "Python 解释器：$PYTHON_BIN（$("$PYTHON_BIN" --version 2>&1)）"
 
 # ---------------------------------------------------------------------------
 # 启动
@@ -106,7 +124,8 @@ start_all() {
   cd agent-service
   if [ ! -d .venv ]; then
     log "创建 Python 虚拟环境并安装依赖…"
-    python3 -m venv .venv
+    "$PYTHON_BIN" -m venv .venv
+    .venv/bin/pip install -q --upgrade pip
     .venv/bin/pip install -q -r requirements.txt
   fi
   # 默认离线确定性模式；若要接真实 LLM：export AGENT_FORCE_MOCK=false AGENT_LLM_API_KEY=sk-xxx
@@ -121,7 +140,6 @@ start_all() {
 
   # 4) web（dist 已在包内则免 Node 托管；缺失才用 npm 构建）--------------------
   log "构建/启动 web 前端（3000）"
-  need_cmd python3
   if [ ! -d web/dist ]; then
     need_cmd node
     log "未找到 web/dist，使用 npm 构建（需要 Node）…"
@@ -130,7 +148,7 @@ start_all() {
     npm run build
     cd "$ROOT"
   fi
-  nohup python3 serve_web.py web/dist 3000 > logs/web.log 2>&1 &
+  nohup "$PYTHON_BIN" serve_web.py web/dist 3000 > logs/web.log 2>&1 &
   echo $! > logs/web.pid
   wait_for_http http://127.0.0.1:3000/ 60 && ok "web 前端 3000 已可访问（日志 logs/web.log）" \
     || { err "web 未起来，tail logs/web.log 排查"; exit 1; }
