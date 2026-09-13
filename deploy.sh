@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # deploy.sh — Chiron Agent 一键部署（中间件 + 三服务 + 健康检查）
 #
-# 适用：Linux 服务器，已安装 docker / docker compose / JDK17 / Maven / Python3.11+ / Node18+
+# 适用：Linux 服务器，已安装 docker / docker compose / JDK17 / Python3.11+
+#       —— 若 bff/target/*.jar 不存在才需要 Maven；若 web/dist 不存在才需要 Node18+。
+#       走「本地构建 + 上传」时这两个产物都在，服务器无需 Maven/Node。
 # 用法：
 #   ./deploy.sh           启动中间件 + BFF + agent-service + web，并逐个健康检查
 #   ./deploy.sh --stop    停止三个后台进程（不动 docker 中间件）
@@ -117,21 +119,19 @@ start_all() {
   wait_for_http http://127.0.0.1:8000/health 120 && ok "agent-service /health 正常（日志 logs/agent.log）" \
     || { err "agent-service 未起来，tail logs/agent.log 排查"; exit 1; }
 
-  # 4) web（node_modules 与 dist/ 都不入库，缺失则就地安装/构建）----------------
+  # 4) web（dist 已在包内则免 Node 托管；缺失才用 npm 构建）--------------------
   log "构建/启动 web 前端（3000）"
-  need_cmd node
-  cd web
-  if [ ! -d node_modules ]; then
-    log "首次部署：安装前端依赖…"
-    npm ci || npm install
-  fi
-  if [ ! -d dist ]; then
-    log "首次部署：构建前端产物（npm run build）…"
+  need_cmd python3
+  if [ ! -d web/dist ]; then
+    need_cmd node
+    log "未找到 web/dist，使用 npm 构建（需要 Node）…"
+    cd web
+    [ -d node_modules ] || npm ci || npm install
     npm run build
+    cd "$ROOT"
   fi
-  nohup npx vite preview --port 3000 --host > ../logs/web.log 2>&1 &
-  echo $! > ../logs/web.pid
-  cd "$ROOT"
+  nohup python3 serve_web.py web/dist 3000 > logs/web.log 2>&1 &
+  echo $! > logs/web.pid
   wait_for_http http://127.0.0.1:3000/ 60 && ok "web 前端 3000 已可访问（日志 logs/web.log）" \
     || { err "web 未起来，tail logs/web.log 排查"; exit 1; }
 
