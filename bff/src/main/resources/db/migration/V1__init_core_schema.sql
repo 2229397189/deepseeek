@@ -6,8 +6,22 @@
 --   3) 金额/额度统一用 bigint 整数分值，避免浮点误差
 -- =====================================================================
 
-CREATE EXTENSION IF NOT EXISTS "pg_trgm";
-CREATE EXTENSION IF NOT EXISTS "vector";
+-- 扩展：pg_trgm（为后续模糊检索预留）与 pgvector（kb_chunks.embedding 向量列）。
+-- 创建扩展需要超级用户权限，且部分受限环境（如无法访问 Docker Hub / PGDG 的机器）并不提供
+-- pgvector；这里用 DO 块 + 异常兜底，缺失时只告警、不中断迁移（对应列已降级，详见 V2 注释）。
+DO $$
+BEGIN
+    CREATE EXTENSION IF NOT EXISTS "pg_trgm";
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE '[V1] pg_trgm 不可用，跳过（当前无 trgm 索引依赖）';
+END $$;
+
+DO $$
+BEGIN
+    CREATE EXTENSION IF NOT EXISTS "vector";
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE '[V1] pgvector 不可用，跳过（kb_chunks.embedding 已降级为 TEXT 占位）';
+END $$;
 
 -- ---------------------------------------------------------------------
 -- 用户

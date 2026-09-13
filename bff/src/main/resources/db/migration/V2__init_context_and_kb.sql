@@ -63,18 +63,21 @@ CREATE TABLE kb_chunks (
     chunk_index  INT          NOT NULL,
     content      TEXT         NOT NULL,
     token_count  INT          NOT NULL DEFAULT 0,
-    embedding    VECTOR(1024),
+    -- 原为 VECTOR(1024) + HNSW 余弦索引。pgvector 不可用的受限环境下降级为 TEXT 占位：
+    -- BFF 不读写该列（KbChunk#embedding 标注 @TableField(exist=false)），故功能无影响。
+    -- 后续补回 pgvector 时改回 VECTOR(1024) 并重建 HNSW 索引即可。
+    embedding    TEXT,
     tsv          TSVECTOR     GENERATED ALWAYS AS (to_tsvector('simple', content)) STORED,
     metadata     JSONB,
     created_at   TIMESTAMPTZ  NOT NULL DEFAULT now(),
     CONSTRAINT fk_chunk_doc FOREIGN KEY (document_id) REFERENCES kb_documents (id),
     CONSTRAINT uk_chunk_doc_index UNIQUE (document_id, chunk_index)
 );
--- 向量检索：HNSW + 余弦距离
-CREATE INDEX idx_chunk_embedding ON kb_chunks USING hnsw (embedding vector_cosine_ops);
+-- 向量检索索引（HNSW + 余弦距离）需 pgvector，受限环境下跳过；补装后手动重建：
+--   CREATE INDEX idx_chunk_embedding ON kb_chunks USING hnsw (embedding vector_cosine_ops);
 -- 全文检索：GIN
 CREATE INDEX idx_chunk_tsv ON kb_chunks USING gin (tsv);
 -- 检索范围约束：按用户 / 会话 / 业务类型收窄
 CREATE INDEX idx_chunk_scope ON kb_chunks (user_id, biz_type, session_id);
-COMMENT ON COLUMN kb_chunks.embedding IS '1024 维向量，HNSW 余弦索引，供 RRF 融合的一路召回';
+COMMENT ON COLUMN kb_chunks.embedding IS '向量列：pgvector 可用时 VECTOR(1024)+HNSW，不可用时 TEXT 占位（BFF 不读写）';
 COMMENT ON COLUMN kb_chunks.tsv IS '生成的 tsvector 列，供 PostgreSQL FTS 一路召回';

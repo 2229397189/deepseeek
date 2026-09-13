@@ -5,8 +5,9 @@
 #       —— 若 bff/target/*.jar 不存在才需要 Maven；若 web/dist 不存在才需要 Node18+。
 #       走「本地构建 + 上传」时这两个产物都在，服务器无需 Maven/Node。
 # 用法：
-#   ./deploy.sh           启动中间件 + BFF + agent-service + web，并逐个健康检查
-#   ./deploy.sh --stop    停止三个后台进程（不动 docker 中间件）
+#   ./deploy.sh               启动中间件容器 + BFF + agent-service + web，并逐个健康检查
+#   ./deploy.sh --no-docker   不启容器，改连本机 PostgreSQL / Redis（拉不到镜像时用）
+#   ./deploy.sh --stop        停止三个后台进程（不动中间件）
 #   ./deploy.sh --down    停止三个后台进程，并 docker compose down（清空中间件容器与数据卷）
 #
 # 重要前提：BFF↔PG/Redis↔agent-service 全部用 127.0.0.1 互访，
@@ -53,15 +54,46 @@ wait_for_http() {
   return 0
 }
 
+# 轮询「命令成功即视为就绪」的探针（如 pg_isready）
+wait_ready() {
+  local name="$1" timeout="$2"; shift 2
+  local t=0
+  until "$@" >/dev/null 2>&1; do
+    sleep 2; t=$((t + 2))
+    if [ "$t" -ge "$timeout" ]; then err "$name ${timeout}s 内未就绪"; return 1; fi
+  done
+  ok "$name 就绪"
+  return 0
+}
+
+# 轮询「命令输出为 PONG」的探针（Redis）
+wait_redis() {
+  local name="$1" timeout="$2"; shift 2
+  local t=0
+  until [ "$("$@" 2>/dev/null)" = "PONG" ]; do
+    sleep 2; t=$((t + 2))
+    if [ "$t" -ge "$timeout" ]; then err "$name ${timeout}s 内未就绪"; return 1; fi
+  done
+  ok "$name 就绪"
+  return 0
+}
+
 # ---------------------------------------------------------------------------
 # 前置依赖检查
 # ---------------------------------------------------------------------------
 need_cmd() {
   command -v "$1" >/dev/null 2>&1 || { err "缺少命令：$1，请先安装"; exit 1; }
 }
-need_cmd docker
+# --no-docker：不启动容器，改用本机已装好的 PostgreSQL / Redis。
+# 适用「服务器出不了公网、拉不到 Docker Hub 镜像（如 pgvector/pgvector:pg16）」的场景。
+NO_DOCKER=0
+for _a in "$@"; do
+  [ "$_a" = "--no-docker" ] && NO_DOCKER=1
+done
+
 need_cmd java
 need_cmd curl
+[ "$NO_DOCKER" = "1" ] || need_cmd docker
 
 # Python 必须 >= 3.10：pydantic v2 会在运行时求值 `X | Y` 之类的新式标注，3.6/3.8 会直接报错。
 # 系统自带 python3 常常偏老（如阿里云 Linux 3 是 3.6），所以这里挑一个够新的解释器；
@@ -87,21 +119,18 @@ ok "Python 解释器：$PYTHON_BIN（$("$PYTHON_BIN" --version 2>&1)）"
 # ---------------------------------------------------------------------------
 start_all() {
   # 1) 中间件 ------------------------------------------------------------------
-  log "启动中间件（PostgreSQL+pgvector / Redis）"
-  docker compose up -d
-  log "等待 PostgreSQL 就绪…"
-  local t=0
-  until docker compose exec -T postgres pg_isready -U lq -d lq_deepseek >/dev/null 2>&1; do
-    sleep 2; t=$((t + 2))
-    if [ "$t" -ge 120 ]; then err "PostgreSQL 120s 内未就绪，请 docker compose logs postgres 排查"; exit 1; fi
-  done
-  ok "PostgreSQL 就绪"
-  log "等待 Redis 就绪…"
-  until [ "$(docker compose exec -T redis redis-cli ping 2>/dev/null)" = "PONG" ]; do
-    sleep 2; t=$((t + 2))
-    if [ "$t" -ge 60 ]; then err "Redis 60s 内未就绪"; exit 1; fi
-  done
-  ok "Redis 就绪"
+  if [ "$NO_DOCKER" = "1" ]; then
+    log "使用本机 PostgreSQL / Redis（--no-docker）"
+    need_cmd pg_isready
+    need_cmd redis-cli
+    wait_ready "PostgreSQL" 90 pg_isready -h 127.0.0.1 -p 5432 -U lq -d lq_deepseek
+    wait_redis "Redis" 60 redis-cli -h 127.0.0.1 ping
+  else
+    log "启动中间件容器（docker compose）"
+    docker compose up -d
+    wait_ready "PostgreSQL" 120 docker compose exec -T postgres pg_isready -U lq -d lq_deepseek
+    wait_redis "Redis" 60 docker compose exec -T redis redis-cli ping
+  fi
 
   # 2) BFF（Spring Boot / Maven，jar 在 bff/target/）---------------------------
   log "构建/启动 BFF（8080）"
@@ -191,6 +220,6 @@ down_all() {
 case "${1:-}" in
   --stop) stop_all ;;
   --down) down_all ;;
-  ""|start) start_all ;;
-  *) err "未知参数：$1（可用：无 / --stop / --down）"; exit 1 ;;
+  ""|start|--no-docker) start_all ;;
+  *) err "未知参数：$1（可用：无 / start / --no-docker / --stop / --down）"; exit 1 ;;
 esac
