@@ -33,8 +33,10 @@ public class DecisionController {
 
     @Operation(summary = "上传 JD 文件并抽取全文")
     @PostMapping("/jd/upload")
-    public Result<DecisionDtos.JdUploadVO> uploadJd(@RequestParam("file") MultipartFile file) {
-        return Result.ok(decisionService.uploadJd(StpUtil.getLoginIdAsLong(), file));
+    public Result<DecisionDtos.JdUploadVO> uploadJd(
+            @RequestParam(value = "file", required = false) MultipartFile file,
+            @RequestParam(value = "text", required = false) String text) {
+        return Result.ok(decisionService.uploadJd(StpUtil.getLoginIdAsLong(), file, text));
     }
 
     @Operation(summary = "快速预览：只给分数与缺口")

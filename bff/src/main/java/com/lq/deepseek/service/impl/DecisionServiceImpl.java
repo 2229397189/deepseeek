@@ -2,6 +2,7 @@ package com.lq.deepseek.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import java.nio.charset.StandardCharsets;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lq.deepseek.common.BusinessException;
 import com.lq.deepseek.common.ErrorCode;
@@ -104,19 +105,35 @@ public class DecisionServiceImpl implements DecisionService {
     // JD 上传
     // -----------------------------------------------------------------------
 
+    /** 兼容旧调用（仅文件）。 */
     @Override
     public DecisionDtos.JdUploadVO uploadJd(Long userId, MultipartFile file) {
-        if (file == null || file.isEmpty()) {
+        return uploadJd(userId, file, null);
+    }
+
+    /** 上传 JD：支持文件，也支持前端「粘贴 JD 文本」直接传入 text。 */
+    public DecisionDtos.JdUploadVO uploadJd(Long userId, MultipartFile file, String text) {
+        byte[] bytes;
+        String fileName;
+        String contentType;
+        if (file != null && !file.isEmpty()) {
+            fileName = StringUtils.cleanPath(
+                    Objects.requireNonNullElse(file.getOriginalFilename(), "jd.txt"));
+            contentType = file.getContentType();
+            bytes = readBytes(file);
+        } else if (StringUtils.hasText(text)) {
+            // 前端「粘贴 JD 文本」路径：以 .txt 资产入库，复用同一套解析流水线
+            fileName = "jd_pasted.txt";
+            contentType = "text/plain";
+            bytes = text.trim().getBytes(StandardCharsets.UTF_8);
+        } else {
             throw new BusinessException(ErrorCode.FILE_EMPTY);
         }
-        String fileName = StringUtils.cleanPath(
-                Objects.requireNonNullElse(file.getOriginalFilename(), "jd.txt"));
         String ext = fileStorage.extensionOf(fileName);
         if (!JD_ALLOWED_EXTS.contains(ext)) {
             throw new BusinessException(ErrorCode.FILE_TYPE_UNSUPPORTED,
                     "JD 仅支持 pdf / docx / md / txt，当前为 ." + (ext.isEmpty() ? "未知" : ext));
         }
-        byte[] bytes = readBytes(file);
         String sha256 = fileStorage.sha256(bytes);
 
         FileAsset asset = fileAssetMapper.selectActiveBySha(userId, sha256, BIZ_ASSET_JD);
@@ -130,7 +147,7 @@ public class DecisionServiceImpl implements DecisionService {
             asset.setUserId(userId);
             asset.setBizType(BIZ_ASSET_JD);
             asset.setFileName(fileName);
-            asset.setContentType(file.getContentType());
+            asset.setContentType(contentType);
             asset.setSizeBytes((long) bytes.length);
             asset.setSha256(sha256);
             asset.setParseStatus("PENDING");

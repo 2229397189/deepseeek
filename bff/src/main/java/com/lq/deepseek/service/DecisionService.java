@@ -13,6 +13,9 @@ public interface DecisionService {
     /** 上传 JD 文件并抽取全文（pdf / docx / md / txt）。 */
     DecisionDtos.JdUploadVO uploadJd(Long userId, MultipartFile file);
 
+    /** 上传 JD：支持文件，也支持前端「粘贴 JD 文本」直接传入 text。 */
+    DecisionDtos.JdUploadVO uploadJd(Long userId, MultipartFile file, String text);
+
     /** 快速预览：只要分数与缺口，落库但不进历史结论。 */
     DecisionDtos.PreviewVO preview(Long userId, DecisionDtos.PreviewRequest request);
 
