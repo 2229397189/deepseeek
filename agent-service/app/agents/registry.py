@@ -84,24 +84,16 @@ async def dispatch(
     llm: LlmClient,
     emit: EmitFunc | None = None,
 ) -> AgentOutcome:
-    handler = _handlers().get(request.biz_type)
-    if handler is None:
+    """入口分发：经内核 Registry 查找 Program，由 AgentRuntime 统一编排。
+
+    内核事件走进程内总线（不改变 SSE 线格式）；未注册的 biz_type 给出明确错误。
+    """
+    from ..kernel import AgentRuntime
+    from .programs import build_registry
+
+    program = build_registry().get(
+        request.biz_type.value if hasattr(request.biz_type, "value") else str(request.biz_type))
+    if program is None:
         raise AgentError("AGENT_STAGE_FAILED", f"未注册的业务类型：{request.biz_type}")
-    return await handler(AgentContext(request=request, llm=llm, emit=emit))
-
-
-def _handlers() -> dict[BizType, Callable[[AgentContext], Awaitable[AgentOutcome]]]:
-    # 延迟导入，避免模块循环依赖
-    from .decide import handle as decide_handle
-    from .interview import handle as interview_handle
-    from .rag import handle as rag_handle
-    from .resume import handle as resume_handle
-
-    return {
-        BizType.DECIDE: decide_handle,
-        BizType.DECIDE_PREVIEW: decide_handle,
-        BizType.INTERVIEW: interview_handle,
-        BizType.RESUME_PARSE: resume_handle,
-        BizType.RESUME_QUESTION: resume_handle,
-        BizType.RAG_SEARCH: rag_handle,
-    }
+    runtime = AgentRuntime()
+    return await runtime.run(program, AgentContext(request=request, llm=llm, emit=emit))
