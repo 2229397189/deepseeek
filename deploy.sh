@@ -143,7 +143,13 @@ start_all() {
     jar="$(find bff/target -maxdepth 1 -name '*.jar' 2>/dev/null | head -1)"
   fi
   [ -n "$jar" ] || { err "BFF 打包失败，未生成 jar"; exit 1; }
-  nohup java -jar "$jar" > logs/bff.log 2>&1 &
+  # 说明：迁移脚本会被打包进 fat jar，若 jar 是在「改动迁移脚本之前」构建的，jar 内那份就是旧的。
+  # 只要源码目录还在，就用命令行参数把 Flyway 指向源码里最新的迁移脚本（命令行参数优先级最高）。
+  local jar_args=""
+  if [ -d bff/src/main/resources/db/migration ]; then
+    jar_args="--spring.flyway.locations=file:$ROOT/bff/src/main/resources/db/migration"
+  fi
+  nohup java -jar "$jar" $jar_args > logs/bff.log 2>&1 &
   echo $! > logs/bff.pid
   wait_for_port 8080 180 && ok "BFF 端口 8080 已监听（日志 logs/bff.log）" \
     || { err "BFF 未起来，tail logs/bff.log 排查"; exit 1; }
