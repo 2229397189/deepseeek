@@ -57,7 +57,8 @@ status() {
   echo "--- 健康检查 ---"
   echo "health: $(curl -s -m 5 http://127.0.0.1:8000/health || echo 无响应)"
   echo "web:    $(curl -s -m 5 -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/ || echo 无响应)"
-  echo "api:    $(curl -s -m 5 -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/swagger-ui.html || echo 无响应)"
+  # 用 /swagger-ui/index.html 而非 /swagger-ui.html：后者会 302 跳转，健康时也只报 302 容易误判
+  echo "api:    $(curl -s -m 5 -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/swagger-ui/index.html || echo 无响应)"
   echo "--- 中间件 ---"
   if pg_isready -h 127.0.0.1 -q; then echo "postgresql: 就绪"; else echo "postgresql: 未就绪"; fi
   echo "redis:      $(redis-cli -h 127.0.0.1 ping 2>/dev/null || echo 无响应)"
