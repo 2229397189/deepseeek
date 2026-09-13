@@ -248,11 +248,20 @@ public class DecisionServiceImpl implements DecisionService {
                     Objects.requireNonNullElse(result.getErrorMsg(), "JD 分析失败，请稍后重试"));
         }
 
-        DecisionAnalysis analysis = persistAnalysis(userId, session, request, result);
-        String title = StringUtils.hasText(request.getTitle()) ? request.getTitle() : session.getTitle();
-        sessionMapper.markAnalyzed(session.getId(), STATUS_FINISHED, result.getRunId(), analysis.getId(),
-                analysis.getScore(), title, request.getJobTitle());
-        appendMessages(session.getId(), analysis);
+        DecisionAnalysis analysis;
+        try {
+            analysis = persistAnalysis(userId, session, request, result);
+            String title = StringUtils.hasText(request.getTitle()) ? request.getTitle() : session.getTitle();
+            sessionMapper.markAnalyzed(session.getId(), STATUS_FINISHED, result.getRunId(), analysis.getId(),
+                    analysis.getScore(), title, request.getJobTitle());
+            appendMessages(session.getId(), analysis);
+        } catch (Exception e) {
+            // 落库阶段失败也要可见：把会话置 FAILED 并回传原因，避免"AI 挂了"被渲染成卡在 RUNNING。
+            log.error("JD 分析落库失败 userId={} sessionId={} runId={}",
+                    userId, session.getId(), result.getRunId(), e);
+            sessionMapper.markStatus(session.getId(), STATUS_FAILED);
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "JD 分析结果落库失败，请稍后重试", e);
+        }
 
         log.info("JD 分析完成 userId={} sessionId={} score={} runId={}",
                 userId, session.getId(), analysis.getScore(), result.getRunId());

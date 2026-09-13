@@ -37,7 +37,8 @@ public class DecisionSession implements Serializable {
 
     private Long snapshotId;
 
-    private Long latestRunId;
+    /** 网关生成的字符串 run_id（"run_<snowflake>"），与 agent_runs.run_id 对齐，非数字主键。 */
+    private String latestRunId;
 
     private Long latestAnalysisId;
 
