@@ -57,6 +57,7 @@ public class AuthServiceImpl implements AuthService {
         user.setNickname(StringUtils.hasText(request.getNickname())
                 ? request.getNickname() : request.getUsername());
         user.setStatus(1);
+        user.setRole("user");
         userMapper.insert(user);
 
         // 钱包与新人额度：同一事务，注册失败不会留下"半截账号"
@@ -144,6 +145,7 @@ public class AuthServiceImpl implements AuthService {
                 .email(user.getEmail())
                 .nickname(user.getNickname())
                 .avatarUrl(user.getAvatarUrl())
+                .role(user.getRole())
                 .createdAt(user.getCreatedAt())
                 .build();
     }

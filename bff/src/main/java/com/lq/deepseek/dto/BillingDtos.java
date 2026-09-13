@@ -53,20 +53,6 @@ public final class BillingDtos {
     }
 
     @Data
-    public static class RechargeRequest {
-
-        @NotNull(message = "充值额度不能为空")
-        @Positive(message = "充值额度必须大于 0")
-        private Long amount;
-
-        /** 幂等键，客户端生成，服务端唯一索引兜底 */
-        private String idempotencyKey;
-
-        private String remark;
-    }
-
-    /** P2-28 兑换码请求。 */
-    @Data
     public static class RedeemRequest {
 
         @NotBlank(message = "请输入兑换码")

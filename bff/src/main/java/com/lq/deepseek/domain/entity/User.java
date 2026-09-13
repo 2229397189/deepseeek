@@ -37,6 +37,9 @@ public class User implements Serializable {
     /** 1=正常 0=禁用 */
     private Integer status;
 
+    /** user 普通用户 / admin 管理员（/admin/** 需要 admin） */
+    private String role;
+
     private OffsetDateTime lastLoginAt;
 
     @TableField(fill = FieldFill.INSERT)

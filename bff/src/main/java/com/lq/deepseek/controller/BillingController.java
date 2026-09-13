@@ -15,10 +15,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.UUID;
-
 /**
- * 账号额度（钱包 / 流水 / 充值）。
+ * 账号额度（钱包 / 流水 / 兑换码）。充值入口已下线：额度只通过注册赠送、邀请奖励与兑换码发放。
  */
 @Tag(name = "账号额度")
 @RestController
@@ -39,16 +37,6 @@ public class BillingController {
     public Result<BillingDtos.LedgerPage> ledger(@RequestParam(defaultValue = "1") long pageNum,
                                                  @RequestParam(defaultValue = "20") long pageSize) {
         return Result.ok(billingService.pageLedger(StpUtil.getLoginIdAsLong(), pageNum, pageSize));
-    }
-
-    @Operation(summary = "充值（演示环境直接入账）")
-    @PostMapping("/recharge")
-    public Result<BillingDtos.WalletVO> recharge(@Valid @RequestBody BillingDtos.RechargeRequest request) {
-        Long userId = StpUtil.getLoginIdAsLong();
-        String key = request.getIdempotencyKey() == null
-                ? "recharge:" + UUID.randomUUID() : request.getIdempotencyKey();
-        billingService.recharge(userId, request.getAmount(), key, request.getRemark());
-        return Result.ok(billingService.getWallet(userId));
     }
 
     @Operation(summary = "兑换码激活（P2-28）")

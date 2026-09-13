@@ -102,11 +102,57 @@ public class AdminServiceImpl implements AdminService {
             result.setOk(true);
             return result;
         }
+        // SSRF 基础防护：探测目标只允许 http(s) 公网地址，禁止借探测打内网
+        requirePublicHttpUrl(entity.getBaseUrl());
         ModelHealthProbe.ProbeResult probe = healthProbe.ping(entity.getBaseUrl());
         result.setOk(probe.isOk());
         result.setLatencyMs(probe.getLatencyMs());
         result.setError(probe.getError());
         return result;
+    }
+
+    /**
+     * 校验探测目标为 http(s) 且非内网/环回地址。
+     *
+     * <p>模型 baseUrl 本属管理员可配，但探测接口是"服务端主动发请求"的入口，
+     * 若不限制协议与目标网段，可被用来扫描内网（云元数据 169.254.169.254 等）。
+     */
+    private void requirePublicHttpUrl(String raw) {
+        java.net.URI uri;
+        try {
+            uri = java.net.URI.create(raw);
+        } catch (IllegalArgumentException e) {
+            throw new BusinessException(ErrorCode.PARAM_INVALID, "baseUrl 格式非法");
+        }
+        String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase();
+        String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase();
+        if (!"http".equals(scheme) && !"https".equals(scheme)) {
+            throw new BusinessException(ErrorCode.PARAM_INVALID, "baseUrl 仅支持 http/https");
+        }
+        boolean blocked = host.isEmpty()
+                || "localhost".equals(host)
+                || host.endsWith(".localhost")
+                || host.equals("0.0.0.0")
+                || host.equals("[::1]")
+                || host.equals("::1")
+                || host.endsWith(".internal")
+                || host.startsWith("127.")
+                || host.startsWith("10.")
+                || host.startsWith("192.168.")
+                || host.startsWith("169.254.");
+        if (!blocked && host.startsWith("172.")) {
+            // 172.16.0.0 - 172.31.255.255 为私网段
+            String[] seg = host.split("\\.");
+            try {
+                int second = Integer.parseInt(seg[1]);
+                blocked = second >= 16 && second <= 31;
+            } catch (NumberFormatException ignored) {
+                // 非数字第二段交给后续 DNS 解析去失败
+            }
+        }
+        if (blocked) {
+            throw new BusinessException(ErrorCode.PARAM_INVALID, "baseUrl 不允许指向内网或环回地址");
+        }
     }
 
     @Override

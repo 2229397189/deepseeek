@@ -34,6 +34,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class BillingServiceImpl implements BillingService {
 
+    /** 历史流水中可能存在 RECHARGE 类型（充值入口已下线），读取侧按原样返回。 */
+    @SuppressWarnings("unused")
     private static final String TYPE_RECHARGE = "RECHARGE";
     private static final String TYPE_GRANT = "GRANT";
     private static final String TYPE_CONSUME = "CONSUME";
@@ -97,13 +99,6 @@ public class BillingServiceImpl implements BillingService {
                 .pageSize(result.getSize())
                 .records(records)
                 .build();
-    }
-
-    @Override
-    @Transactional(rollbackFor = Exception.class)
-    public long recharge(Long userId, long amount, String idempotencyKey, String remark) {
-        return grant(userId, amount, TYPE_RECHARGE, "RECHARGE", null, idempotencyKey,
-                StringUtils.hasText(remark) ? remark : "额度充值");
     }
 
     @Override

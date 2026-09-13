@@ -21,9 +21,6 @@ public interface BillingService {
 
     BillingDtos.LedgerPage pageLedger(Long userId, long pageNum, long pageSize);
 
-    /** 充值 / 后台补发，返回变动后可用额度。 */
-    long recharge(Long userId, long amount, String idempotencyKey, String remark);
-
     /** 通用入账（新人额度、邀请奖励等）。 */
     long grant(Long userId, long amount, String changeType, String bizType, Long bizId,
                String idempotencyKey, String remark);

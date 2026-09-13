@@ -65,6 +65,8 @@ public final class AuthDtos {
         private String email;
         private String nickname;
         private String avatarUrl;
+        /** user 普通用户 / admin 管理员 */
+        private String role;
         private OffsetDateTime createdAt;
     }
 }

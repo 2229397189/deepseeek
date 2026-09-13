@@ -25,6 +25,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -70,17 +71,22 @@ public class GraphServiceImpl implements GraphService {
 
         if ("resume".equals(prefix)) {
             FileAsset asset = fileAssetMapper.selectById(safeId(raw));
-            if (asset != null) {
+            // 他人资源按"不存在"处理：evidence 是节点明细出口，必须做归属校验防越权读取
+            if (asset != null && Objects.equals(asset.getUserId(), userId)) {
                 evidence.add(ev("简历", "文件名：" + asset.getFileName(), asset.getCreatedAt()));
             }
         } else if ("job".equals(prefix)) {
             DecisionSession session = sessionMapper.selectById(safeId(raw));
-            if (session != null) {
+            if (session != null && Objects.equals(session.getUserId(), userId)) {
                 evidence.add(ev("JD 分析", "岗位：" + session.getJobTitle(), session.getCreatedAt()));
             }
         } else if ("interview".equals(prefix)) {
             InterviewSession session = interviewSessionMapper.selectById(safeId(raw));
-            InterviewReport report = latestReport(safeId(raw));
+            if (session != null && !Objects.equals(session.getUserId(), userId)) {
+                session = null;
+                // 他人面试会话：连同其报告一起按不存在处理
+            }
+            InterviewReport report = session == null ? null : latestReport(session.getId());
             String excerpt = (session == null ? "模拟面试" : session.getTitle());
             if (report != null && report.getWeakPoints() != null && !report.getWeakPoints().isEmpty()) {
                 excerpt += "；薄弱点：" + String.join("、", report.getWeakPoints());
