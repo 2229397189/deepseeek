@@ -149,7 +149,10 @@ start_all() {
   if [ -d bff/src/main/resources/db/migration ]; then
     jar_args="--spring.flyway.locations=file:$ROOT/bff/src/main/resources/db/migration"
   fi
-  nohup java -jar "$jar" $jar_args > logs/bff.log 2>&1 &
+  # 小内存实例（如 2GB 的 ECS）必须限制堆，否则 JVM 默认按物理内存取上限，容易把 PG 挤到 OOM。
+  JAVA_OPTS="${JAVA_OPTS:--Xms128m -Xmx512m -XX:+UseSerialGC}"
+  log "BFF JVM 参数：$JAVA_OPTS"
+  nohup java $JAVA_OPTS -jar "$jar" $jar_args > logs/bff.log 2>&1 &
   echo $! > logs/bff.pid
   wait_for_port 8080 180 && ok "BFF 端口 8080 已监听（日志 logs/bff.log）" \
     || { err "BFF 未起来，tail logs/bff.log 排查"; exit 1; }
