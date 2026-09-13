@@ -107,17 +107,28 @@ start_all() {
     python3 -m venv .venv
     .venv/bin/pip install -q -r requirements.txt
   fi
-  AGENT_FORCE_MOCK=true nohup .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 \
+  # 默认离线确定性模式；若要接真实 LLM：export AGENT_FORCE_MOCK=false AGENT_LLM_API_KEY=sk-xxx
+  local agent_mock="${AGENT_FORCE_MOCK:-true}"
+  log "agent 模式：AGENT_FORCE_MOCK=$agent_mock"
+  AGENT_FORCE_MOCK="$agent_mock" nohup .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 \
     > ../logs/agent.log 2>&1 &
   echo $! > ../logs/agent.pid
   cd "$ROOT"
   wait_for_http http://127.0.0.1:8000/health 120 && ok "agent-service /health 正常（日志 logs/agent.log）" \
     || { err "agent-service 未起来，tail logs/agent.log 排查"; exit 1; }
 
-  # 4) web（静态产物 dist/，用 vite preview 起，含 SPA history 回退）-----------
-  log "启动 web 前端（3000，serve web/dist）"
+  # 4) web（node_modules 与 dist/ 都不入库，缺失则就地安装/构建）----------------
+  log "构建/启动 web 前端（3000）"
   need_cmd node
   cd web
+  if [ ! -d node_modules ]; then
+    log "首次部署：安装前端依赖…"
+    npm ci || npm install
+  fi
+  if [ ! -d dist ]; then
+    log "首次部署：构建前端产物（npm run build）…"
+    npm run build
+  fi
   nohup npx vite preview --port 3000 --host > ../logs/web.log 2>&1 &
   echo $! > ../logs/web.pid
   cd "$ROOT"
