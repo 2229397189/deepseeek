@@ -1,7 +1,11 @@
-import type { FormEvent } from 'react';
-import { Plus, Mic, ArrowUp } from 'lucide-react';
+import { useRef, useState, type FormEvent } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useMutation } from '@tanstack/react-query';
+import { Plus, Mic, ArrowUp, Loader2 } from 'lucide-react';
 import { Textarea } from '@/shared/components/Textarea';
 import { ModelPicker } from './ModelPicker';
+import { uploadResume } from '@/features/resume/api';
+import { useUiStore } from '@/store/uiStore';
 
 interface IntentInputProps {
   value: string;
@@ -10,11 +14,36 @@ interface IntentInputProps {
   loading: boolean;
 }
 
-/** 工作台大输入卡：文本区 + 底部行（模型选择 / 加号 / 黑色麦克风 / 发送圆钮）。 */
+/** 工作台大输入卡：文本区 + 底部行（模型选择 / 附件上传 / 黑色麦克风 / 发送圆钮）。 */
 export function IntentInput({ value, onChange, onSubmit, loading }: IntentInputProps): JSX.Element {
+  const navigate = useNavigate();
+  const pushToast = useUiStore((s) => s.pushToast);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (value.trim() && !loading) onSubmit();
+  };
+
+  // 附件按钮：选择文件即上传为简历，成功后跳简历中心（解析由后端异步完成）
+  const uploadMut = useMutation({
+    mutationFn: (file: File) => uploadResume(file),
+    onSuccess: (res) => {
+      pushToast({ tone: 'ok', message: `简历《${res.originalName ?? '未命名'}》已上传，解析中` });
+      navigate(`/resume/${res.assetId}`);
+    },
+    onError: (err: Error) => pushToast({ tone: 'danger', message: err.message }),
+    onSettled: () => setUploading(false),
+  });
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (f) {
+      setUploading(true);
+      uploadMut.mutate(f);
+    }
+    e.target.value = '';
   };
 
   return (
@@ -30,12 +59,22 @@ export function IntentInput({ value, onChange, onSubmit, loading }: IntentInputP
         <div className="mt-2 flex items-center justify-between gap-2 px-1">
           <div className="flex items-center gap-2">
             <ModelPicker />
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".md,.txt,.pdf,.docx"
+              className="hidden"
+              onChange={handleFileChange}
+            />
             <button
               type="button"
-              aria-label="添加附件"
-              className="flex h-8 w-8 items-center justify-center rounded-full text-ink-soft transition-colors hover:bg-surface-2"
+              aria-label="上传简历"
+              title="上传简历（md / txt / pdf / docx）"
+              disabled={uploading}
+              onClick={() => fileRef.current?.click()}
+              className="flex h-8 w-8 items-center justify-center rounded-full text-ink-soft transition-colors hover:bg-surface-2 disabled:opacity-50"
             >
-              <Plus size={18} />
+              {uploading ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
             </button>
           </div>
           <div className="flex items-center gap-2">
