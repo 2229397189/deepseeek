@@ -147,7 +147,9 @@ start_all() {
   # 只要源码目录还在，就用命令行参数把 Flyway 指向源码里最新的迁移脚本（命令行参数优先级最高）。
   local jar_args=""
   if [ -d bff/src/main/resources/db/migration ]; then
-    jar_args="--spring.flyway.locations=file:$ROOT/bff/src/main/resources/db/migration"
+    # 注意：Flyway 9 的合法前缀是 filesystem: / classpath: / s3: / gcs:，**没有 file:**；
+    # 写成 file: 会抛 "Unknown prefix for location" 导致启动失败。
+    jar_args="--spring.flyway.locations=filesystem:$ROOT/bff/src/main/resources/db/migration"
   fi
   # 小内存实例（如 2GB 的 ECS）必须限制堆，否则 JVM 默认按物理内存取上限，容易把 PG 挤到 OOM。
   JAVA_OPTS="${JAVA_OPTS:--Xms128m -Xmx512m -XX:+UseSerialGC}"
