@@ -8,8 +8,10 @@ import { Badge } from '@/shared/components/Badge';
 import { EmptyState } from '@/shared/components/EmptyState';
 import { Skeleton } from '@/shared/components/Skeleton';
 import { ErrorState } from '@/shared/components/ErrorState';
+import { Drawer } from '@/shared/components/Drawer';
 import { useUiStore } from '@/store/uiStore';
-import { getResume, listResumes, saveResumeBody, uploadResume } from './api';
+import { formatDateTime } from '@/lib/format';
+import { getResume, listResumes, listVersions, rollbackVersion, saveResumeBody, uploadResume } from './api';
 import type { AssetBrief } from './types';
 import { MarkdownEditor } from './MarkdownEditor';
 import { ResumePreview } from './ResumePreview';
@@ -35,6 +37,8 @@ export function ResumeCenterPage(): JSX.Element {
   const [loadedAssetId, setLoadedAssetId] = useState<string | null>(null);
   /** P2-19 当前视图模式，默认并排（保持原有三栏体验）。 */
   const [mode, setMode] = useState<'split' | 'edit' | 'preview'>('split');
+  /** Bug3：简历版本历史抽屉开关。 */
+  const [versionOpen, setVersionOpen] = useState(false);
   const previewRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -67,6 +71,26 @@ export function ResumeCenterPage(): JSX.Element {
   const saveMut = useMutation({
     mutationFn: () => saveResumeBody(assetId as string, body),
     onSuccess: () => pushToast({ tone: 'ok', message: '正文已保存' }),
+    onError: (err: Error) => pushToast({ tone: 'danger', message: err.message }),
+  });
+
+  /** Bug3：版本历史列表（仅在抽屉打开时拉取）。 */
+  const versionQ = useQuery({
+    queryKey: ['resumeVersions', assetId],
+    queryFn: () => listVersions(assetId as string),
+    enabled: versionOpen && !!assetId,
+  });
+
+  /** Bug3：回滚到指定版本。 */
+  const rollbackMut = useMutation({
+    mutationFn: (versionNo: number) => rollbackVersion(assetId as string, versionNo),
+    onSuccess: (res) => {
+      setBody(res.body ?? '');
+      setLoadedAssetId(assetId);
+      qc.invalidateQueries({ queryKey: ['resume', assetId] });
+      setVersionOpen(false);
+      pushToast({ tone: 'ok', message: '已回滚到该版本' });
+    },
     onError: (err: Error) => pushToast({ tone: 'danger', message: err.message }),
   });
 
@@ -194,17 +218,17 @@ export function ResumeCenterPage(): JSX.Element {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button size="sm" variant="secondary" onClick={() => saveMut.mutate()} loading={saveMut.isPending}>
-            <Save size={15} /> 保存信息
-          </Button>
-          <Button size="sm" variant="secondary" onClick={() => saveMut.mutate()} loading={saveMut.isPending}>
-            <Save size={15} /> 保存正文
+          <Button size="sm" onClick={() => saveMut.mutate()} loading={saveMut.isPending}>
+            <Save size={15} /> 保存
           </Button>
           <Button size="sm" onClick={handleExport}>
             <FileDown size={15} /> 导出 PDF
           </Button>
           <Button size="sm" variant="ghost" onClick={() => fileRef.current?.click()}>
             <Upload size={15} /> 上传
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setVersionOpen(true)}>
+            版本历史
           </Button>
         </div>
       </div>
@@ -241,6 +265,55 @@ export function ResumeCenterPage(): JSX.Element {
           )}
         </Card>
       </div>
+
+      <Drawer open={versionOpen} onClose={() => setVersionOpen(false)} title="简历版本历史">
+        {!assetId ? (
+          <p className="text-sm text-ink-faint">请先选择一份简历。</p>
+        ) : versionQ.isLoading ? (
+          <div className="space-y-3">
+            {[0, 1, 2].map((i) => (
+              <Skeleton key={i} className="h-16 w-full" />
+            ))}
+          </div>
+        ) : versionQ.isError ? (
+          <ErrorState message="版本列表加载失败" onRetry={() => versionQ.refetch()} />
+        ) : !versionQ.data || versionQ.data.length === 0 ? (
+          <EmptyState title="暂无历史版本" description="每次保存正文都会生成一个版本" />
+        ) : (
+          <ol className="space-y-3">
+            {versionQ.data.map((v) => (
+              <li
+                key={v.versionNo}
+                className="rounded-md border border-line bg-surface-2 px-3 py-2.5"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-ink">v{v.versionNo}</span>
+                  <span className="font-mono text-xs text-ink-faint">
+                    {formatDateTime(v.createdAt ?? '')}
+                  </span>
+                </div>
+                {v.changeDesc && (
+                  <p className="mt-1 text-xs text-ink-soft">{v.changeDesc}</p>
+                )}
+                <div className="mt-2 flex items-center justify-between">
+                  <span className="truncate text-xs text-ink-faint">
+                    {v.bodyPreview ?? '（无预览）'}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    loading={rollbackMut.isPending}
+                    disabled={rollbackMut.isPending}
+                    onClick={() => rollbackMut.mutate(v.versionNo)}
+                  >
+                    回滚
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ol>
+        )}
+      </Drawer>
     </div>
   );
 }

@@ -9,6 +9,7 @@ import {
   LineChart,
   Cpu,
   Database,
+  Wallet,
   PanelLeftClose,
   PanelLeftOpen,
   ChevronRight,
@@ -35,6 +36,7 @@ const TOP_ITEMS: NavItem[] = [
 const ADMIN_ITEMS: NavItem[] = [
   { to: '/admin/models', label: '模型管理', icon: Cpu },
   { to: '/admin/kb', label: '知识库管理', icon: Database },
+  { to: '/admin/billing', label: '计费与额度', icon: Wallet },
 ];
 
 function NavRow({ item, collapsed }: { item: NavItem; collapsed: boolean }): JSX.Element {

@@ -11,6 +11,7 @@ import { GraphPage } from '@/features/graph/GraphPage';
 import { ProfilePage } from '@/features/profile/ProfilePage';
 import { AdminModelsPage } from '@/features/admin/models/AdminModelsPage';
 import { AdminKbPage } from '@/features/admin/kb/AdminKbPage';
+import { AdminBillingPage } from '@/features/admin/billing/AdminBillingPage';
 
 /**
  * 路由表。docs §1 信息架构与路由表。
@@ -46,6 +47,14 @@ export const router = createBrowserRouter([
         element: (
           <RequireAdmin>
             <AdminKbPage />
+          </RequireAdmin>
+        ),
+      },
+      {
+        path: 'admin/billing',
+        element: (
+          <RequireAdmin>
+            <AdminBillingPage />
           </RequireAdmin>
         ),
       },

@@ -1,0 +1,17 @@
+# application-prod.yml — 生产 profile（激活方式：SPRING_PROFILES_ACTIVE=prod 或 --spring.profiles.active=prod）
+# 所有敏感/环境相关配置均从环境变量读取，仓库内不落明文密码。
+# 启动前必须导出：LQ_DB_PASSWORD（其余有默认值，可按部署环境覆盖）。
+spring:
+  datasource:
+    url: jdbc:postgresql://${LQ_DB_HOST:127.0.0.1}:${LQ_DB_PORT:5432}/${LQ_DB_NAME:lq_deepseek}?stringtype=unspecified
+    username: ${LQ_DB_USER:lq}
+    # 生产环境无默认值：不设置 LQ_DB_PASSWORD 则连接失败，避免误用开发库密码上线。
+    password: ${LQ_DB_PASSWORD}
+  data:
+    redis:
+      host: ${LQ_REDIS_HOST:127.0.0.1}
+      port: ${LQ_REDIS_PORT:6379}
+
+lq:
+  agent:
+    base-url: ${LQ_AGENT_BASE_URL:http://127.0.0.1:8000}
