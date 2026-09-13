@@ -8,6 +8,7 @@ import com.lq.deepseek.domain.entity.DecisionAnalysis;
 import com.lq.deepseek.domain.entity.DecisionMessage;
 import com.lq.deepseek.domain.entity.DecisionSession;
 import com.lq.deepseek.domain.entity.FileAsset;
+import com.lq.deepseek.domain.entity.AgentContextSnapshot;
 import com.lq.deepseek.domain.mapper.DecisionAnalysisMapper;
 import com.lq.deepseek.domain.mapper.DecisionMessageMapper;
 import com.lq.deepseek.domain.mapper.DecisionSessionMapper;
@@ -16,6 +17,7 @@ import com.lq.deepseek.dto.DecisionDtos;
 import com.lq.deepseek.gateway.AiInvocationGateway;
 import com.lq.deepseek.gateway.model.AgentInvokeCommand;
 import com.lq.deepseek.gateway.model.AgentInvokeResult;
+import com.lq.deepseek.service.support.ContextAssembler;
 import com.lq.deepseek.service.support.FileStorageService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -33,6 +35,7 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -84,8 +87,15 @@ class DecisionServiceImplTest {
 
         LqProperties properties = new LqProperties();
         properties.getStorage().setLocalRoot(tempDir.toString());
+        ContextAssembler contextAssembler = mock(ContextAssembler.class);
+        AgentContextSnapshot snapshot = new AgentContextSnapshot();
+        snapshot.setId(5001L);
+        snapshot.setDegraded(false);
+        snapshot.setTokenUsed(120);
+        when(contextAssembler.assemble(anyLong(), anyLong(), anyString(), anyList(), any()))
+                .thenReturn(snapshot);
         service = new DecisionServiceImpl(sessionMapper, analysisMapper, messageMapper, fileAssetMapper,
-                gateway, new FileStorageService(properties), new ObjectMapper());
+                gateway, new FileStorageService(properties), new ObjectMapper(), contextAssembler);
 
         when(sessionMapper.insert(any(DecisionSession.class))).thenAnswer(invocation -> {
             DecisionSession session = invocation.getArgument(0);

@@ -11,6 +11,8 @@ import com.lq.deepseek.dto.KbDtos;
 import com.lq.deepseek.gateway.AiInvocationGateway;
 import com.lq.deepseek.gateway.model.AgentInvokeCommand;
 import com.lq.deepseek.gateway.model.AgentInvokeResult;
+import com.lq.deepseek.service.KbService;
+import com.lq.deepseek.service.support.HybridRetriever;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -51,7 +53,8 @@ class KbServiceImplTest {
         documentMapper = mock(KbDocumentMapper.class);
         chunkMapper = mock(KbChunkMapper.class);
         gateway = mock(AiInvocationGateway.class);
-        service = new KbServiceImpl(documentMapper, chunkMapper, gateway, new LqProperties());
+        service = new KbServiceImpl(documentMapper, chunkMapper, gateway, new LqProperties(),
+                mock(HybridRetriever.class));
 
         when(documentMapper.insert(any(KbDocument.class))).thenAnswer(invocation -> {
             KbDocument doc = invocation.getArgument(0);

@@ -87,6 +87,27 @@ lq:
     retry:
       max-attempts: 3
       backoff-ms: 300
+    # stage 级治理策略：key 为 bizType 或 bizType:stage，未命中的走 defaultStage
+    # timeout-ms 覆盖该阶段超时；max-concurrent 是并发隔离（舱壁）许可数
+    stages:
+      DECIDE:
+        timeout-ms: 120000
+        max-concurrent: 4
+      DECIDE_PREVIEW:
+        timeout-ms: 60000
+        max-concurrent: 6
+      INTERVIEW:
+        timeout-ms: 90000
+        max-concurrent: 6
+      RAG_SEARCH:
+        timeout-ms: 30000
+        max-concurrent: 10
+      RESUME_PARSE:
+        timeout-ms: 90000
+        max-concurrent: 4
+    default-stage:
+      max-concurrent: 8
+      acquire-timeout-ms: 2000
   storage:
     type: local
     # 简历 / JD 原件落盘目录（相对 BFF 运行目录），换对象存储时只改这里

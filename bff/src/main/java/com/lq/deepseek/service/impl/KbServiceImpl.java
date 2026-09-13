@@ -13,6 +13,7 @@ import com.lq.deepseek.gateway.AiInvocationGateway;
 import com.lq.deepseek.gateway.model.AgentInvokeCommand;
 import com.lq.deepseek.gateway.model.AgentInvokeResult;
 import com.lq.deepseek.service.KbService;
+import com.lq.deepseek.service.support.HybridRetriever;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -54,6 +55,7 @@ public class KbServiceImpl implements KbService {
     private final KbChunkMapper chunkMapper;
     private final AiInvocationGateway gateway;
     private final LqProperties properties;
+    private final HybridRetriever hybridRetriever;
 
     @Override
     public List<KbDtos.KbDocument> listDocuments(Long userId, String title, Long documentId) {
@@ -139,7 +141,17 @@ public class KbServiceImpl implements KbService {
                 return hits.stream().limit(k).toList();
             }
         }
-        log.warn("知识库检索回退确定性混合打分 userId={} q={}", userId, query);
+        // 网关不可用 / agent 无结果 → 数据库内混合检索（FTS + trigram + RRF，向两路就绪时自动三路）
+        log.info("知识库检索走库内混合检索（RRF 融合） userId={} q={}", userId, query);
+        try {
+            List<KbDtos.KbHit> hybrid = hybridRetriever.search(userId, query, k, null);
+            if (!hybrid.isEmpty()) {
+                return hybrid;
+            }
+        } catch (Exception e) {
+            // pg_trgm / tsquery 不可用等环境差异：再降级为纯 Java 词项重叠打分
+            log.warn("库内混合检索不可用，回退词项重叠打分 userId={} 原因={}", userId, e.getMessage());
+        }
         return fallbackSearch(userId, query, k);
     }
 
@@ -179,6 +191,14 @@ public class KbServiceImpl implements KbService {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("query", query);
         payload.put("topK", topK);
+        // 语料级 RetrievalProfile：随请求透传给 agent，融合权重与 RRF 参数一份配置两处复用
+        var r = properties.getKb().getRetrieval();
+        payload.put("profile", Map.of(
+                "wFts", r.getWFts(),
+                "wTrgm", r.getWTrgm(),
+                "wVector", r.getWVector(),
+                "rrfK", r.getRrfK(),
+                "topK", topK));
         try {
             return gateway.invoke(AgentInvokeCommand.builder()
                     .bizType(BIZ)

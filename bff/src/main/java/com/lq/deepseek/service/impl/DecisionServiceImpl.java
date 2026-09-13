@@ -18,6 +18,7 @@ import com.lq.deepseek.gateway.AiInvocationGateway;
 import com.lq.deepseek.gateway.model.AgentInvokeCommand;
 import com.lq.deepseek.gateway.model.AgentInvokeResult;
 import com.lq.deepseek.service.DecisionService;
+import com.lq.deepseek.service.support.ContextAssembler;
 import com.lq.deepseek.service.support.FileStorageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -97,6 +98,7 @@ public class DecisionServiceImpl implements DecisionService {
     private final AiInvocationGateway gateway;
     private final FileStorageService fileStorage;
     private final ObjectMapper objectMapper;
+    private final ContextAssembler contextAssembler;
 
     // -----------------------------------------------------------------------
     // JD 上传
@@ -185,7 +187,7 @@ public class DecisionServiceImpl implements DecisionService {
                 .userId(userId)
                 .stage("PREVIEW")
                 .specHash(SPEC_PREVIEW)
-                .payload(decidePayload(jdText, profile))
+                .payload(decidePayload(jdText, profile, null))
                 .expectedCredit(PREVIEW_FREEZE_CREDIT)
                 .timeoutMs(DECIDE_TIMEOUT_MS)
                 .build());
@@ -226,6 +228,22 @@ public class DecisionServiceImpl implements DecisionService {
                 : bindSession(userId, request, jdText);
         sessionMapper.markStatus(session.getId(), STATUS_RUNNING);
 
+        // Context 治理：JD + 简历画像打包为可追踪快照（证据分层 + token 预算裁剪 + degraded 标记），
+        // 会话挂 snapshotId，agent 负载带 contextSnapshotId，"这次分析看到了什么"全程可审计
+        var contextSnapshot = contextAssembler.assemble(userId, session.getId(), BIZ_DECIDE, List.of(
+                new ContextAssembler.Material("jd", ContextAssembler.EvidenceLevel.HIGH,
+                        jdText, Map.of("jdAssetId", Objects.requireNonNullElse(request.getJdAssetId(), 0L))),
+                new ContextAssembler.Material("resume", ContextAssembler.EvidenceLevel.HIGH,
+                        profileDigest(profile), Map.of("resumeAssetId", request.getResumeAssetId()))
+        ), null);
+        DecisionSession snapshotPatch = new DecisionSession();
+        snapshotPatch.setId(session.getId());
+        snapshotPatch.setSnapshotId(contextSnapshot.getId());
+        sessionMapper.updateById(snapshotPatch);
+        if (Boolean.TRUE.equals(contextSnapshot.getDegraded())) {
+            log.warn("JD 分析上下文降级 sessionId={} 原因={}", session.getId(), contextSnapshot.getDegradedReason());
+        }
+
         AgentInvokeResult result;
         try {
             result = gateway.invoke(AgentInvokeCommand.builder()
@@ -234,7 +252,7 @@ public class DecisionServiceImpl implements DecisionService {
                     .userId(userId)
                     .stage("MATCH")
                     .specHash(SPEC_DECIDE)
-                    .payload(decidePayload(jdText, profile))
+                    .payload(decidePayload(jdText, profile, contextSnapshot.getId()))
                     .expectedCredit(DECIDE_FREEZE_CREDIT)
                     .timeoutMs(DECIDE_TIMEOUT_MS)
                     .build());
@@ -381,12 +399,15 @@ public class DecisionServiceImpl implements DecisionService {
     // 内部实现
     // -----------------------------------------------------------------------
 
-    private Map<String, Object> decidePayload(String jdText, Map<String, Object> profile) {
+    private Map<String, Object> decidePayload(String jdText, Map<String, Object> profile, Long contextSnapshotId) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("jdText", jdText);
         payload.put("profile", profile);
         // 简历原文由画像字段拼回：agent 侧做关键词覆盖判定时需要可检索的原始文本
         payload.put("resumeText", profileDigest(profile));
+        if (contextSnapshotId != null) {
+            payload.put("contextSnapshotId", contextSnapshotId);
+        }
         return payload;
     }
 

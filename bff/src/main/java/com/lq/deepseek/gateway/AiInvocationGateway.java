@@ -62,6 +62,8 @@ public class AiInvocationGateway {
     private final ObjectMapper objectMapper;
     private final LqProperties properties;
     private final GatewayMetrics metrics;
+    private final StagePolicyRegistry stagePolicies;
+    private final StageBulkhead stageBulkhead;
 
     public AiInvocationGateway(AgentClient agentClient,
                                SingleFlightCoordinator coordinator,
@@ -70,7 +72,9 @@ public class AiInvocationGateway {
                                AgentRunMapper runMapper,
                                ObjectMapper objectMapper,
                                LqProperties properties,
-                               GatewayMetrics metrics) {
+                               GatewayMetrics metrics,
+                               StagePolicyRegistry stagePolicies,
+                               StageBulkhead stageBulkhead) {
         this.agentClient = agentClient;
         this.coordinator = coordinator;
         this.costCalculator = costCalculator;
@@ -79,6 +83,8 @@ public class AiInvocationGateway {
         this.objectMapper = objectMapper;
         this.properties = properties;
         this.metrics = metrics;
+        this.stagePolicies = stagePolicies;
+        this.stageBulkhead = stageBulkhead;
     }
 
     /**
@@ -96,9 +102,15 @@ public class AiInvocationGateway {
 
         Long freezeLedgerId = freezeIfNeeded(command, runId);
 
+        // stage 级策略：超时 / 重试次数 / 并发隔离都按 stage 解析，业务侧只声明 bizType 与负载
+        var policy = stagePolicies.resolve(command.getBizType(), command.getStage());
+        long effectiveTimeout = stagePolicies.effectiveTimeoutMs(command.getTimeoutMs(), policy);
+        String stageKey = command.getBizType() + ":" + command.getStage();
+
         FlightOutcome outcome;
         try {
-            outcome = coordinator.run(flightKey, command.getTimeoutMs(), () -> executeWithRetry(command, runId));
+            outcome = stageBulkhead.run(stageKey, policy, () ->
+                    coordinator.run(flightKey, effectiveTimeout, () -> executeWithRetry(command, runId, policy)));
         } catch (AgentCallException e) {
             releaseFreeze(command, freezeLedgerId, runId, "调用失败释放冻结");
             finishFailed(runId, e.getCode(), e.getMessage(), elapsed(startedAt));
@@ -149,13 +161,14 @@ public class AiInvocationGateway {
     // 执行与重试
     // ------------------------------------------------------------------
 
-    private String executeWithRetry(AgentInvokeCommand command, String runId) {
+    private String executeWithRetry(AgentInvokeCommand command, String runId,
+                                    LqProperties.Gateway.StagePolicy policy) {
         LqProperties.Gateway.Retry retry = properties.getGateway().getRetry();
         Set<String> retryableCodes = Arrays.stream(retry.getRetryableCodes().split(","))
                 .map(String::trim)
                 .filter(s -> !s.isEmpty())
                 .collect(Collectors.toCollection(LinkedHashSet::new));
-        int maxAttempts = Math.max(retry.getMaxAttempts(), 1);
+        int maxAttempts = stagePolicies.effectiveMaxAttempts(policy);
         long start = System.currentTimeMillis();
         AgentCallException last = null;
 
