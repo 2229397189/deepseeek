@@ -1,20 +1,5 @@
-import { get, post } from '@/lib/apiClient';
-import type { LedgerPage, MetricsVO, RechargeRequest, RunPage, WalletVO } from './types';
-
-/** GET /billing/wallet */
-export function getWallet(): Promise<WalletVO> {
-  return get<WalletVO>('/api/billing/wallet');
-}
-
-/** GET /billing/ledger ?pageNum=&pageSize= */
-export function getLedger(pageNum = 1, pageSize = 20): Promise<LedgerPage> {
-  return get<LedgerPage>('/api/billing/ledger', { pageNum, pageSize });
-}
-
-/** POST /billing/recharge */
-export function recharge(req: RechargeRequest): Promise<WalletVO> {
-  return post<WalletVO>('/api/billing/recharge', req);
-}
+import { get } from '@/lib/apiClient';
+import type { MetricsVO, RunPage } from './types';
 
 /** GET /gateway/metrics */
 export function getGatewayMetrics(): Promise<MetricsVO> {

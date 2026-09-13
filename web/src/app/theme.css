@@ -5,36 +5,38 @@
   --color-surface-2: #F3F1ED;
   /* 文字 */
   --color-ink: #1C1B1A;
-  --color-ink-soft: #5B5752;
+  --color-ink-soft: #57534E;
   --color-ink-faint: #8A857E;
   /* 边框 */
-  --color-line: #E4E1DB;
-  --color-line-strong: #D2CDC4;
-  /* 主色 */
-  --color-brand: #2F6F4E;
-  --color-brand-hover: #276043;
-  --color-brand-strong: #1E4A33;
-  --color-brand-soft: #E7F0EB;
+  --color-line: #E8E5DF;
+  --color-line-strong: #D8D4CC;
+  /* 主色：黑（brand）+ 蓝（accent） */
+  --color-brand: #1C1B1A;
+  --color-brand-hover: #38332E;
+  --color-brand-strong: #000000;
+  --color-brand-soft: #ECEAE6;
   /* 语义 */
-  --color-danger: #D14343;     --color-danger-soft: #FBEAEA;
-  --color-warn: #C2780A;       --color-warn-soft: #FBF1DD;
-  --color-ok: #2F855A;         --color-ok-soft: #E6F2EB;
-  --color-info: #2C6E9B;       --color-info-soft: #E8F0F6;
+  --color-accent: #2563EB;      --color-accent-hover: #1D4ED8;
+  --color-accent-strong: #1E40AF; --color-accent-soft: #EAF1FB;
+  --color-danger: #DC2626;      --color-danger-soft: #FDECEC;
+  --color-warn: #C2780A;        --color-warn-soft: #FBF1DD;
+  --color-ok: #2F855A;          --color-ok-soft: #E6F2EB;
+  --color-info: #2563EB;        --color-info-soft: #EAF1FB;
   --color-amber: #B7791F;
   /* 半径 */
-  --radius-sm: 4px; --radius-md: 8px; --radius-lg: 10px;
-  --radius-xl: 12px; --radius-2xl: 16px;
+  --radius-sm: 6px; --radius-md: 10px; --radius-lg: 12px;
+  --radius-xl: 16px; --radius-2xl: 20px;
   /* 阴影 */
-  --shadow-card: 0 1px 2px rgba(28,27,26,.04), 0 1px 3px rgba(28,27,26,.06);
-  --shadow-pop: 0 6px 16px rgba(28,27,26,.10);
-  --shadow-focus: 0 0 0 3px rgba(47,111,78,.18);
+  --shadow-card: 0 1px 2px rgba(28,27,26,.04), 0 1px 3px rgba(28,27,26,.05);
+  --shadow-pop: 0 8px 24px rgba(28,27,26,.12);
+  --shadow-focus: 0 0 0 3px rgba(37,99,235,.16);
   /* 动效 */
-  --dur-fast: 120ms; --dur-base: 180ms; --dur-slow: 260ms;
+  --dur-fast: .12s; --dur-base: .18s; --dur-slow: .26s;
   --ease-smooth: cubic-bezier(.4,0,.2,1);
   /* 字体 */
-  --font-sans: "IBM Plex Sans","PingFang SC","Microsoft YaHei","Source Han Sans SC","Noto Sans SC",system-ui,sans-serif;
+  --font-sans: "Inter","PingFang SC","Microsoft YaHei","Source Han Sans SC","Noto Sans SC",system-ui,sans-serif;
   --font-mono: "JetBrains Mono","IBM Plex Mono",ui-monospace,SFMono-Regular,Consolas,monospace;
   /* 布局 */
-  --nav-width: 232px; --nav-width-collapsed: 64px; --topbar-height: 56px;
-  --content-max: 1200px; --content-pad: 24px;
+  --nav-width: 248px; --nav-width-collapsed: 64px; --topbar-height: 56px;
+  --content-max: 1200px; --content-pad: 28px;
 }

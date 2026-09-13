@@ -1,11 +1,10 @@
 import { useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
 import { SideNav } from './SideNav';
-import { TopBar } from './TopBar';
 import { useAuthStore } from '@/store/authStore';
 import { getMe } from '@/features/auth/api';
 
-/** 应用外壳：左导航 + 顶栏 + 内容区（Outlet）。docs §2 / §3.4。 */
+/** 应用外壳：左导航 + 内容区（Outlet）。顶栏已移除，用户/登出迁入 SideNav 底部。 */
 export function AppShell(): JSX.Element {
   const token = useAuthStore((s) => s.token);
   const user = useAuthStore((s) => s.user);
@@ -23,14 +22,11 @@ export function AppShell(): JSX.Element {
   return (
     <div className="flex h-full w-full overflow-hidden">
       <SideNav />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <TopBar />
-        <main className="flex-1 overflow-y-auto bg-paper" style={{ padding: 'var(--content-pad)' }}>
-          <div className="mx-auto w-full" style={{ maxWidth: 'var(--content-max)' }}>
-            <Outlet />
-          </div>
-        </main>
-      </div>
+      <main className="flex-1 overflow-y-auto bg-paper" style={{ padding: 'var(--content-pad)' }}>
+        <div className="mx-auto w-full" style={{ maxWidth: 'var(--content-max)' }}>
+          <Outlet />
+        </div>
+      </main>
     </div>
   );
 }

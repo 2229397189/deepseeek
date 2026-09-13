@@ -114,6 +114,22 @@ if [ -z "${PYTHON_BIN:-}" ]; then
 fi
 ok "Python 解释器：$PYTHON_BIN（$("$PYTHON_BIN" --version 2>&1)）"
 
+# 端口可配：同一台机器上若已有别的项目占用，就用环境变量错开。
+#   BFF_PORT=8180 AGENT_PORT=8000 WEB_PORT=3100 ./deploy.sh --nginx
+BFF_PORT="${BFF_PORT:-8080}"
+AGENT_PORT="${AGENT_PORT:-8000}"
+WEB_PORT="${WEB_PORT:-3000}"
+
+# --nginx：前端交给 nginx 托管（同源 + /api 反代到 BFF），本脚本不再起静态服务器。
+# 为什么需要它：前端 apiClient 用 `VITE_API_BASE ?? ''`，即**同源**设计；
+# 若 web 和 BFF 分处不同端口，前端请求 /api 会打到静态服务器上拿不到 JSON。
+NO_STATIC_WEB=0
+for _a in "$@"; do
+  [ "$_a" = "--nginx" ] && NO_STATIC_WEB=1
+done
+
+ok "端口规划：BFF=$BFF_PORT  agent=$AGENT_PORT  web=$WEB_PORT（nginx 托管=$NO_STATIC_WEB）"
+
 # ---------------------------------------------------------------------------
 # 启动
 # ---------------------------------------------------------------------------
@@ -133,7 +149,7 @@ start_all() {
   fi
 
   # 2) BFF（Spring Boot / Maven，jar 在 bff/target/）---------------------------
-  log "构建/启动 BFF（8080）"
+  log "构建/启动 BFF（端口 $BFF_PORT）"
   local jar
   jar="$(find bff/target -maxdepth 1 -name '*.jar' 2>/dev/null | head -1)"
   if [ -z "$jar" ]; then
@@ -154,13 +170,16 @@ start_all() {
   # 小内存实例（如 2GB 的 ECS）必须限制堆，否则 JVM 默认按物理内存取上限，容易把 PG 挤到 OOM。
   JAVA_OPTS="${JAVA_OPTS:--Xms128m -Xmx512m -XX:+UseSerialGC}"
   log "BFF JVM 参数：$JAVA_OPTS"
-  nohup java $JAVA_OPTS -jar "$jar" $jar_args > logs/bff.log 2>&1 &
+  # --server.port 覆盖端口；--lq.agent.base-url 跟着 AGENT_PORT 走（application.yml 里写死的是 8000）
+  nohup java $JAVA_OPTS -jar "$jar" $jar_args \
+    --server.port="$BFF_PORT" --lq.agent.base-url="http://127.0.0.1:$AGENT_PORT" \
+    > logs/bff.log 2>&1 &
   echo $! > logs/bff.pid
-  wait_for_port 8080 180 && ok "BFF 端口 8080 已监听（日志 logs/bff.log）" \
+  wait_for_port "$BFF_PORT" 180 && ok "BFF 端口 $BFF_PORT 已监听（日志 logs/bff.log）" \
     || { err "BFF 未起来，tail logs/bff.log 排查"; exit 1; }
 
   # 3) agent-service（FastAPI / Python venv）----------------------------------
-  log "准备并启动 agent-service（8000）"
+  log "准备并启动 agent-service（端口 $AGENT_PORT）"
   cd agent-service
   if [ ! -d .venv ]; then
     log "创建 Python 虚拟环境并安装依赖…"
@@ -171,32 +190,42 @@ start_all() {
   # 默认离线确定性模式；若要接真实 LLM：export AGENT_FORCE_MOCK=false AGENT_LLM_API_KEY=sk-xxx
   local agent_mock="${AGENT_FORCE_MOCK:-true}"
   log "agent 模式：AGENT_FORCE_MOCK=$agent_mock"
-  AGENT_FORCE_MOCK="$agent_mock" nohup .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 \
+  AGENT_FORCE_MOCK="$agent_mock" nohup .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port "$AGENT_PORT" \
     > ../logs/agent.log 2>&1 &
   echo $! > ../logs/agent.pid
   cd "$ROOT"
-  wait_for_http http://127.0.0.1:8000/health 120 && ok "agent-service /health 正常（日志 logs/agent.log）" \
+  wait_for_http "http://127.0.0.1:$AGENT_PORT/health" 120 && ok "agent-service /health 正常（日志 logs/agent.log）" \
     || { err "agent-service 未起来，tail logs/agent.log 排查"; exit 1; }
 
-  # 4) web（dist 已在包内则免 Node 托管；缺失才用 npm 构建）--------------------
-  log "构建/启动 web 前端（3000）"
+  # 4) web（dist 缺失才用 npm 构建；托管交给 nginx 或本脚本的静态服务器）--------
   if [ ! -d web/dist ]; then
-    need_cmd node
     log "未找到 web/dist，使用 npm 构建（需要 Node）…"
+    need_cmd node
     cd web
     [ -d node_modules ] || npm ci || npm install
     npm run build
     cd "$ROOT"
   fi
-  nohup "$PYTHON_BIN" serve_web.py web/dist 3000 > logs/web.log 2>&1 &
-  echo $! > logs/web.pid
-  wait_for_http http://127.0.0.1:3000/ 60 && ok "web 前端 3000 已可访问（日志 logs/web.log）" \
-    || { err "web 未起来，tail logs/web.log 排查"; exit 1; }
+
+  if [ "$NO_STATIC_WEB" = "1" ]; then
+    ok "web 由 nginx 托管（--nginx），跳过静态服务器"
+  else
+    log "启动 web 静态服务器（端口 $WEB_PORT）"
+    nohup "$PYTHON_BIN" serve_web.py web/dist "$WEB_PORT" > logs/web.log 2>&1 &
+    echo $! > logs/web.pid
+    wait_for_http "http://127.0.0.1:$WEB_PORT/" 60 && ok "web 前端 $WEB_PORT 已可访问（日志 logs/web.log）" \
+      || { err "web 未起来，tail logs/web.log 排查"; exit 1; }
+    warn "静态服务器不转发 /api；前端是「同源」设计，若 BFF 不同端口则 UI 调不到后端 —— 正式部署请用 --nginx。"
+  fi
 
   echo
   ok "全部服务已启动"
-  log "访问入口： http://<服务器IP>:3000   后端 API： http://<服务器IP>:8080/api"
-  log "后台进程 PID： logs/{bff,agent,web}.pid —— 停止用 ./deploy.sh --stop"
+  if [ "$NO_STATIC_WEB" = "1" ]; then
+    log "对外入口由 nginx 提供；/api 反代到 127.0.0.1:$BFF_PORT"
+  else
+    log "访问入口： http://<服务器IP>:$WEB_PORT   后端 API： http://<服务器IP>:$BFF_PORT/api"
+  fi
+  log "后台进程 PID： logs/*.pid —— 停止用 ./deploy.sh --stop"
 }
 
 # ---------------------------------------------------------------------------
@@ -228,9 +257,17 @@ down_all() {
 # ---------------------------------------------------------------------------
 # 入口
 # ---------------------------------------------------------------------------
-case "${1:-}" in
-  --stop) stop_all ;;
-  --down) down_all ;;
-  ""|start|--no-docker) start_all ;;
-  *) err "未知参数：$1（可用：无 / start / --no-docker / --stop / --down）"; exit 1 ;;
+ACTION="start"
+for _arg in "$@"; do
+  case "$_arg" in
+    --stop) ACTION="stop" ;;
+    --down) ACTION="down" ;;
+    --no-docker|--nginx|start) : ;;
+    *) err "未知参数：$_arg（可用：start / --no-docker / --nginx / --stop / --down）"; exit 1 ;;
+  esac
+done
+case "$ACTION" in
+  start) start_all ;;
+  stop)  stop_all ;;
+  down)  down_all ;;
 esac

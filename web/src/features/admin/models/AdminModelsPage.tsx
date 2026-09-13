@@ -15,9 +15,6 @@ import { deleteModel, getPricing, listModels, testModel } from './api';
 import { getGatewayMetrics } from '../billing/api';
 import type { ModelConfig } from './types';
 import { ModelFormDrawer } from './ModelFormDrawer';
-import { WalletCard } from '../billing/WalletCard';
-import { LedgerTable } from '../billing/LedgerTable';
-import { RechargeDialog } from '../billing/RechargeDialog';
 
 /** Provider 展示顺序（合并视图分组用）。 */
 const PROVIDER_ORDER: string[] = ['DeepSeek', 'deepseek', 'OpenAI', 'OpenAI 兼容'];
@@ -46,7 +43,6 @@ export function AdminModelsPage(): JSX.Element {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<ModelConfig | null>(null);
   const [deleting, setDeleting] = useState<ModelConfig | null>(null);
-  const [rechargeOpen, setRechargeOpen] = useState(false);
   const [tab, setTab] = useState<'list' | 'merged'>('list');
 
   const modelsQ = useQuery({ queryKey: ['models'], queryFn: listModels });
@@ -304,17 +300,6 @@ export function AdminModelsPage(): JSX.Element {
         ) : null}
       </Card>
 
-      <div className="flex items-center justify-between">
-        <h2 className="text-md font-semibold text-ink">额度与账单</h2>
-        <Button size="sm" variant="secondary" onClick={() => setRechargeOpen(true)}>
-          充值
-        </Button>
-      </div>
-      <div className="space-y-4">
-        <WalletCard />
-        <LedgerTable />
-      </div>
-
       <ModelFormDrawer open={formOpen} onClose={() => setFormOpen(false)} model={editing} />
 
       <Dialog
@@ -328,8 +313,6 @@ export function AdminModelsPage(): JSX.Element {
       >
         确认删除模型「{deleting?.name}」？该操作不可撤销。
       </Dialog>
-
-      <RechargeDialog open={rechargeOpen} onClose={() => setRechargeOpen(false)} />
     </div>
   );
 }
