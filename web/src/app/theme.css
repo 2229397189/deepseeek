@@ -1,0 +1,40 @@
+:root {
+  /* 表面 */
+  --color-paper: #FAF9F7;
+  --color-surface: #FFFFFF;
+  --color-surface-2: #F3F1ED;
+  /* 文字 */
+  --color-ink: #1C1B1A;
+  --color-ink-soft: #5B5752;
+  --color-ink-faint: #8A857E;
+  /* 边框 */
+  --color-line: #E4E1DB;
+  --color-line-strong: #D2CDC4;
+  /* 主色 */
+  --color-brand: #2F6F4E;
+  --color-brand-hover: #276043;
+  --color-brand-strong: #1E4A33;
+  --color-brand-soft: #E7F0EB;
+  /* 语义 */
+  --color-danger: #D14343;     --color-danger-soft: #FBEAEA;
+  --color-warn: #C2780A;       --color-warn-soft: #FBF1DD;
+  --color-ok: #2F855A;         --color-ok-soft: #E6F2EB;
+  --color-info: #2C6E9B;       --color-info-soft: #E8F0F6;
+  --color-amber: #B7791F;
+  /* 半径 */
+  --radius-sm: 4px; --radius-md: 8px; --radius-lg: 10px;
+  --radius-xl: 12px; --radius-2xl: 16px;
+  /* 阴影 */
+  --shadow-card: 0 1px 2px rgba(28,27,26,.04), 0 1px 3px rgba(28,27,26,.06);
+  --shadow-pop: 0 6px 16px rgba(28,27,26,.10);
+  --shadow-focus: 0 0 0 3px rgba(47,111,78,.18);
+  /* 动效 */
+  --dur-fast: 120ms; --dur-base: 180ms; --dur-slow: 260ms;
+  --ease-smooth: cubic-bezier(.4,0,.2,1);
+  /* 字体 */
+  --font-sans: "IBM Plex Sans","PingFang SC","Microsoft YaHei","Source Han Sans SC","Noto Sans SC",system-ui,sans-serif;
+  --font-mono: "JetBrains Mono","IBM Plex Mono",ui-monospace,SFMono-Regular,Consolas,monospace;
+  /* 布局 */
+  --nav-width: 232px; --nav-width-collapsed: 64px; --topbar-height: 56px;
+  --content-max: 1200px; --content-pad: 24px;
+}
